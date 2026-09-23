@@ -3,6 +3,21 @@
 All notable changes to this boilerplate. Versions follow semantic versioning;
 the version number lives in `pyproject.toml` and `main.py`.
 
+## Unreleased — AI Notes domain
+
+- Single-company application: the tenant concept (`tenants` table,
+  `tenant_id` columns, `X-Tenant-Id` header, `AppContext.tenant_id`) is
+  removed. `AppContext` now carries only the user identity and permissions.
+- `Document` is replaced by `Note` (`id`, `created_by`, `title`, `content`,
+  `created_at`) and `document_chunks` by `note_chunks`, keeping pgvector
+  embeddings and the HNSW index.
+- Notes are created with `POST /notes` (JSON `title` + `content`); file
+  upload, `filename` and `content_type` are removed.
+- Retrieval (`search_knowledge`) only returns chunks of notes created by the
+  authenticated user. Sources are cited by note title.
+- Permission `documents:create` (`DOCUMENTS_CREATE`) is renamed to
+  `notes:create` (`NOTES_CREATE`).
+
 ## 1.0.0 (unreleased, pending final audit)
 
 First release of the boilerplate: a FastAPI application with an OpenAI Agents

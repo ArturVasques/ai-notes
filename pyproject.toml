@@ -17,7 +17,6 @@ dependencies = [
     "psycopg[binary,pool]",
     "pgvector",
     "alembic",
-    "python-multipart",
     "structlog",
 ]
 

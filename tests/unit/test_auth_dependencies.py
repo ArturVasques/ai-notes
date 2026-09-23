@@ -1,7 +1,7 @@
 """
 Regression tests for the development authentication boundary.
 
-Bug covered: header identity (X-User-Id / X-Tenant-Id) must be possible only
+Bug covered: header identity (X-User-Id) must be possible only
 when APP_ENV is exactly `development`. Any other environment fails closed
 with 501 until a real identity provider is wired in.
 """
@@ -12,7 +12,7 @@ import pytest
 from fastapi import HTTPException
 
 import app.auth.dependencies as dependencies
-from app.auth.permissions import DOCUMENTS_CREATE, KNOWLEDGE_READ, PROFILE_READ
+from app.auth.permissions import KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ
 from app.core.config import AppEnv, AppSettings
 
 
@@ -30,12 +30,12 @@ async def test_header_identity_is_rejected_outside_development(
     monkeypatch.setattr(dependencies, "settings", _settings_for(app_env, monkeypatch))
 
     with pytest.raises(HTTPException) as error:
-        await dependencies.get_app_context(x_user_id=uuid4(), x_tenant_id=uuid4())
+        await dependencies.get_app_context(x_user_id=uuid4())
 
     assert error.value.status_code == 501
 
 
-async def test_development_requires_both_identity_headers(
+async def test_development_requires_the_identity_header(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -43,7 +43,7 @@ async def test_development_requires_both_identity_headers(
     )
 
     with pytest.raises(HTTPException) as error:
-        await dependencies.get_app_context(x_user_id=uuid4(), x_tenant_id=None)
+        await dependencies.get_app_context(x_user_id=None)
 
     assert error.value.status_code == 401
 
@@ -55,12 +55,8 @@ async def test_development_builds_trusted_context_from_headers(
         dependencies, "settings", _settings_for(AppEnv.DEVELOPMENT, monkeypatch)
     )
     user_id = uuid4()
-    tenant_id = uuid4()
 
-    context = await dependencies.get_app_context(
-        x_user_id=user_id, x_tenant_id=tenant_id
-    )
+    context = await dependencies.get_app_context(x_user_id=user_id)
 
     assert context.user_id == user_id
-    assert context.tenant_id == tenant_id
-    assert context.permissions == {KNOWLEDGE_READ, DOCUMENTS_CREATE, PROFILE_READ}
+    assert context.permissions == {KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ}

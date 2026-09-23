@@ -15,8 +15,8 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import (
-    DOCUMENT_CHUNKS_EMBEDDING_DIMENSION,
     EMBEDDING_MODEL_DIMENSIONS,
+    NOTE_CHUNKS_EMBEDDING_DIMENSION,
     AISettings,
     AppEnv,
     AppSettings,
@@ -83,7 +83,7 @@ def test_embedding_model_with_incompatible_dimension_fails_early(
     monkeypatch.setenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-large")
 
     assert EMBEDDING_MODEL_DIMENSIONS["text-embedding-3-large"] != (
-        DOCUMENT_CHUNKS_EMBEDDING_DIMENSION
+        NOTE_CHUNKS_EMBEDDING_DIMENSION
     )
 
     with pytest.raises(ValidationError, match="VECTOR\\(1536\\)"):
@@ -107,7 +107,7 @@ def test_compatible_embedding_model_is_accepted(
     settings = AISettings(_env_file=None)
 
     assert EMBEDDING_MODEL_DIMENSIONS[settings.openai_embedding_model] == (
-        DOCUMENT_CHUNKS_EMBEDDING_DIMENSION
+        NOTE_CHUNKS_EMBEDDING_DIMENSION
     )
 
 

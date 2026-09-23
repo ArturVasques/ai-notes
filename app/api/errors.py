@@ -2,7 +2,7 @@
 Uniform HTTP error handling.
 
 Domain ValueErrors raised by services (e.g. ingestion_service rejecting an
-empty document) become a consistent 400 JSON body instead of an unhandled
+empty note) become a consistent 400 JSON body instead of an unhandled
 500 with a leaked traceback. An AssistantContractError from the assistant
 output contract becomes a 502 instead of a stack trace. Every other
 unexpected exception is logged with structlog and returns a generic body

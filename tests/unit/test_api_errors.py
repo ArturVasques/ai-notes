@@ -2,7 +2,7 @@
 HTTP-level regression tests for the error contract and request correlation.
 
 Bugs covered:
-- an empty document used to surface as an unhandled 500 with a traceback;
+- an empty note used to surface as an unhandled 500 with a traceback;
   it must be a 400 VALIDATION_ERROR.
 - unexpected exceptions must be masked as 500 INTERNAL_ERROR without leaking
   the message, and still carry X-Request-ID (Starlette's ServerErrorMiddleware
@@ -24,11 +24,11 @@ from fastapi.testclient import TestClient
 from starlette.middleware.cors import CORSMiddleware
 
 import app.api.chat as chat_api
-import app.api.documents as documents_api
+import app.api.notes as notes_api
 import app.core.middleware as middleware
 from app.auth.context import AppContext
 from app.auth.dependencies import get_app_context
-from app.auth.permissions import DOCUMENTS_CREATE, KNOWLEDGE_READ, PROFILE_READ
+from app.auth.permissions import KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ
 from app.core.config import AppSettings
 from app.services.ai.agent_service import AssistantContractError
 from main import app
@@ -41,8 +41,7 @@ UUID_PATTERN = re.compile(
 def _trusted_context() -> AppContext:
     return AppContext(
         user_id=uuid4(),
-        tenant_id=uuid4(),
-        permissions=frozenset({KNOWLEDGE_READ, DOCUMENTS_CREATE, PROFILE_READ}),
+        permissions=frozenset({KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ}),
     )
 
 
@@ -55,28 +54,36 @@ def client() -> Iterator[TestClient]:
     app.dependency_overrides.clear()
 
 
-def test_empty_document_returns_validation_error(client: TestClient) -> None:
+def test_blank_note_returns_validation_error(client: TestClient) -> None:
     response = client.post(
-        "/documents",
-        files={"file": ("blank.txt", b"   \n\n  ", "text/plain")},
+        "/notes",
+        json={"title": "Blank", "content": "   \n\n  "},
     )
 
     assert response.status_code == 400
     assert response.json() == {
         "code": "VALIDATION_ERROR",
-        "message": "Document contains no usable text",
+        "message": "Note contains no usable text",
     }
     assert UUID_PATTERN.match(response.headers["x-request-id"])
 
 
-def test_text_plain_with_charset_parameter_is_accepted(client: TestClient) -> None:
-    response = client.post(
-        "/documents",
-        files={"file": ("blank.txt", b"   ", "text/plain; charset=utf-8")},
+def test_note_without_title_is_rejected(client: TestClient) -> None:
+    response = client.post("/notes", json={"content": "some real content"})
+
+    assert response.status_code == 422
+
+
+def test_note_creation_requires_notes_create_permission(
+    client: TestClient,
+) -> None:
+    app.dependency_overrides[get_app_context] = lambda: AppContext(
+        user_id=uuid4(), permissions=frozenset({KNOWLEDGE_READ})
     )
 
-    assert response.status_code == 400
-    assert response.json()["code"] == "VALIDATION_ERROR"
+    response = client.post("/notes", json={"title": "Note", "content": "content"})
+
+    assert response.status_code == 403
 
 
 def test_unexpected_exception_is_masked_and_correlated(
@@ -85,11 +92,11 @@ def test_unexpected_exception_is_masked_and_correlated(
     async def explode(**kwargs: object) -> None:
         raise RuntimeError("database credentials are hunter2")
 
-    monkeypatch.setattr(documents_api, "ingest_document", explode)
+    monkeypatch.setattr(notes_api, "ingest_note", explode)
 
     response = client.post(
-        "/documents",
-        files={"file": ("doc.txt", b"some real content", "text/plain")},
+        "/notes",
+        json={"title": "Note", "content": "some real content"},
         headers={"X-Request-ID": "corr-123"},
     )
 
@@ -108,11 +115,11 @@ def test_unrelated_type_error_is_not_reported_as_upstream_failure(
     async def wrong_arity(**kwargs: object) -> None:
         raise TypeError("unexpected keyword argument")
 
-    monkeypatch.setattr(documents_api, "ingest_document", wrong_arity)
+    monkeypatch.setattr(notes_api, "ingest_note", wrong_arity)
 
     response = client.post(
-        "/documents",
-        files={"file": ("doc.txt", b"content", "text/plain")},
+        "/notes",
+        json={"title": "Note", "content": "content"},
     )
 
     assert response.status_code == 500

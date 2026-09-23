@@ -1,8 +1,8 @@
 """
 Regression tests for the agent tool security boundary.
 
-- The model never chooses identity: no tool schema exposes user_id,
-  tenant_id or permissions as parameters.
+- The model never chooses identity: no tool schema exposes user_id
+  or permissions as parameters.
 - Every tool registered on the assistant checks a permission and refuses
   before touching any repository when it is missing.
 """
@@ -17,14 +17,13 @@ from app.auth.context import AppContext
 from app.tools.knowledge_tools import search_knowledge
 from app.tools.user_tools import get_my_profile
 
-IDENTITY_FIELDS = {"user_id", "tenant_id", "permissions", "context"}
+IDENTITY_FIELDS = {"user_id", "permissions", "context"}
 
 
 def _tool_context(permissions: set[str]) -> ToolContext[AppContext]:
     return ToolContext(
         context=AppContext(
             user_id=uuid4(),
-            tenant_id=uuid4(),
             permissions=frozenset(permissions),
         ),
         tool_name="test",

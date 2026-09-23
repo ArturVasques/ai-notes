@@ -1,8 +1,6 @@
 """
 Persistence operations for application users.
 
-Every user lookup is tenant-scoped.
-
 Used by:
 - user tools.
 - future authentication/user services.
@@ -20,9 +18,8 @@ from app.schemas.user import UserProfile
 async def get_user_by_id(
     *,
     user_id: UUID,
-    tenant_id: UUID,
 ) -> UserProfile | None:
-    """Return a user only when they belong to the supplied tenant."""
+    """Return the user with the supplied id, if it exists."""
 
     async with pool.connection() as connection, connection.cursor() as cursor:
         await cursor.execute(
@@ -30,9 +27,8 @@ async def get_user_by_id(
                 SELECT id, name, email
                 FROM users
                 WHERE id = %s
-                  AND tenant_id = %s
                 """,
-            (user_id, tenant_id),
+            (user_id,),
         )
 
         row = await cursor.fetchone()

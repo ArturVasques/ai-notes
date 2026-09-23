@@ -14,12 +14,11 @@ from app.core.config import AppEnv, get_settings
 from app.core.event_loop import loop_factory
 from app.database.connection import close_database_pool, open_database_pool, pool
 
-TENANT_ID = UUID("11111111-1111-1111-1111-111111111111")
 USER_ID = UUID("22222222-2222-2222-2222-222222222222")
 
 
 async def seed() -> None:
-    """Insert the local development tenant and user."""
+    """Insert the local development user."""
 
     settings = get_settings()
 
@@ -32,28 +31,17 @@ async def seed() -> None:
         async with pool.connection() as connection, connection.transaction():
             await connection.execute(
                 """
-                    INSERT INTO tenants (id, name)
-                    VALUES (%s, %s)
-                    ON CONFLICT (id) DO NOTHING
-                    """,
-                (TENANT_ID, "Local Development"),
-            )
-
-            await connection.execute(
-                """
                     INSERT INTO users (
                         id,
-                        tenant_id,
                         external_identity_id,
                         name,
                         email
                     )
-                    VALUES (%s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT (id) DO NOTHING
                     """,
                 (
                     USER_ID,
-                    TENANT_ID,
                     "local-developer",
                     "Local Developer",
                     "developer@example.com",

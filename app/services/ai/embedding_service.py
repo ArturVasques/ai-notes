@@ -1,13 +1,13 @@
 """
 OpenAI embedding infrastructure.
 
-Provides single-query and batch document embedding operations.
+Provides single-query and batch note embedding operations.
 
 Used by:
-- document ingestion to embed chunks in batches.
+- note ingestion to embed chunks in batches.
 - retrieval service to embed search queries.
 
-Document ingestion uses batching to avoid one API request per chunk.
+Note ingestion uses batching to avoid one API request per chunk.
 """
 
 from openai import AsyncOpenAI
@@ -31,7 +31,7 @@ async def create_embedding(text: str) -> list[float]:
 
 
 async def create_embeddings(texts: list[str]) -> list[list[float]]:
-    """Create embeddings for multiple document chunks in one API request."""
+    """Create embeddings for multiple note chunks in one API request."""
 
     if not texts:
         return []

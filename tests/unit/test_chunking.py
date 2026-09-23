@@ -1,4 +1,4 @@
-"""Unit tests for deterministic document chunking."""
+"""Unit tests for deterministic note chunking."""
 
 import pytest
 

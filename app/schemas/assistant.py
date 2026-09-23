@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 class SourceReference(BaseModel):
     """Knowledge source referenced by an assistant answer."""
 
-    filename: str
+    title: str
     chunk_index: int
 
 

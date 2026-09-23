@@ -26,7 +26,6 @@ async def get_my_profile(
 
     user = await get_user_by_id(
         user_id=context.context.user_id,
-        tenant_id=context.context.tenant_id,
     )
 
     if user is None:

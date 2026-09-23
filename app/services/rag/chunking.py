@@ -1,14 +1,14 @@
 """
-Text chunking for document ingestion.
+Text chunking for note ingestion.
 
-Documents are divided into overlapping chunks before embeddings are created.
+Notes are divided into overlapping chunks before embeddings are created.
 Overlap helps preserve context around chunk boundaries.
 
 Used by:
-- document ingestion service before embedding generation.
+- note ingestion service before embedding generation.
 
 A production system may later replace this implementation with
-token-aware or document-format-aware chunking without affecting repositories
+token-aware chunking without affecting repositories
 or agents.
 """
 

@@ -13,5 +13,5 @@ Used by:
 """
 
 KNOWLEDGE_READ = "knowledge:read"
-DOCUMENTS_CREATE = "documents:create"
+NOTES_CREATE = "notes:create"
 PROFILE_READ = "profile:read"

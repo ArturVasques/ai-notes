@@ -156,7 +156,7 @@ jobs:
           [ "$status" = "healthy" ]
           docker compose exec -T api id -u | grep -qv '^0$'
 
-      - name: Seed the development tenant inside the container
+      - name: Seed the development user inside the container
         run: docker compose run --rm --no-deps api python -m app.database.seed
 
       - name: Show logs on failure

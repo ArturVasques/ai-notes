@@ -25,7 +25,7 @@ EVAL_CASES: list[EvalCase] = [
             "According to our internal guidelines, "
             "what should an athlete with a RecoveryScore of 32 do?"
         ),
-        "expected_source": "recovery-guidelines.txt",
+        "expected_source": "Recovery guidelines",
         "required_concepts": [
             "poor recovery",
             "avoid intense training",
@@ -37,7 +37,7 @@ EVAL_CASES: list[EvalCase] = [
             "According to our internal guidelines, "
             "what does a RecoveryScore above 70 indicate?"
         ),
-        "expected_source": "recovery-guidelines.txt",
+        "expected_source": "Recovery guidelines",
         "required_concepts": [
             "good recovery",
             "planned training",

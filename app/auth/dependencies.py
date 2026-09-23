@@ -19,7 +19,7 @@ from uuid import UUID
 from fastapi import Header, HTTPException, status
 
 from app.auth.context import AppContext
-from app.auth.permissions import DOCUMENTS_CREATE, KNOWLEDGE_READ, PROFILE_READ
+from app.auth.permissions import KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ
 from app.core.config import AppEnv, get_settings
 
 settings = get_settings()
@@ -27,7 +27,6 @@ settings = get_settings()
 
 async def get_app_context(
     x_user_id: UUID | None = Header(default=None),
-    x_tenant_id: UUID | None = Header(default=None),
 ) -> AppContext:
     """
     Build trusted application context for a local development request.
@@ -47,19 +46,18 @@ async def get_app_context(
             detail="Production identity provider is not configured",
         )
 
-    if x_user_id is None or x_tenant_id is None:
+    if x_user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Development identity headers are required",
+            detail="Development identity header is required",
         )
 
     return AppContext(
         user_id=x_user_id,
-        tenant_id=x_tenant_id,
         permissions=frozenset(
             {
                 KNOWLEDGE_READ,
-                DOCUMENTS_CREATE,
+                NOTES_CREATE,
                 PROFILE_READ,
             }
         ),

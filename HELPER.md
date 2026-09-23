@@ -24,7 +24,7 @@ Copy-Item .env.example .env
 # plus a published port, or point .env at any local PostgreSQL + pgvector)
 alembic upgrade head
 
-# Development tenant and user (refuses to run unless APP_ENV=development)
+# Development user (refuses to run unless APP_ENV=development)
 python -m app.database.seed
 
 # API with auto-reload
@@ -86,20 +86,18 @@ docker compose up --build -d
 # Follow the API logs (structured JSON)
 docker compose logs -f api
 
-# Development tenant and user, once per database volume
+# Development user, once per database volume
 docker compose run --rm --no-deps api python -m app.database.seed
 
-# Load the sample knowledge document
-curl.exe -X POST http://localhost:8000/documents `
-  -H "X-User-Id: 22222222-2222-2222-2222-222222222222" `
-  -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" `
-  -F "file=@recovery-guidelines.txt;type=text/plain"
+# Create the sample note (JSON title + content)
+$headers = @{ "X-User-Id" = "22222222-2222-2222-2222-222222222222" }
+$note = @{ title = "Recovery guidelines"; content = (Get-Content -Raw recovery-guidelines.txt) } | ConvertTo-Json
+Invoke-RestMethod -Method Post http://localhost:8000/notes -Headers $headers -ContentType "application/json" -Body $note
 
 # Ask the assistant
 curl.exe -X POST http://localhost:8000/chat `
   -H "Content-Type: application/json" `
   -H "X-User-Id: 22222222-2222-2222-2222-222222222222" `
-  -H "X-Tenant-Id: 11111111-1111-1111-1111-111111111111" `
   -d '{\"message\": \"What should an athlete with a RecoveryScore of 32 do?\"}'
 
 # Rebuild the image after a code change, keeping the database volume

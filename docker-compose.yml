@@ -4,7 +4,7 @@
 # It is not a production deployment descriptor and must never be used as one:
 #
 #   - APP_ENV is "development", which enables header-based identity
-#     (X-User-Id / X-Tenant-Id) with no identity provider.
+#     (X-User-Id) with no identity provider.
 #   - PostgreSQL runs with the throwaway credentials postgres/postgres.
 #   - Configuration is inlined here or read from the local .env file.
 #   - The API is published on a plain HTTP port with no TLS or ingress.

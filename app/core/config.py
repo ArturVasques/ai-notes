@@ -37,14 +37,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #
 # The embedding model is not a free-form value: changing it to a model that
 # produces a different dimensionality requires a schema migration and
-# re-embedding every existing document chunk (see docs/ARCHITECTURE.md).
+# re-embedding every existing note chunk (see docs/ARCHITECTURE.md).
 EMBEDDING_MODEL_DIMENSIONS: dict[str, int] = {
     "text-embedding-3-small": 1536,
     "text-embedding-3-large": 3072,
     "text-embedding-ada-002": 1536,
 }
 
-DOCUMENT_CHUNKS_EMBEDDING_DIMENSION = 1536
+NOTE_CHUNKS_EMBEDDING_DIMENSION = 1536
 
 
 class AppEnv(StrEnum):
@@ -111,14 +111,14 @@ class AISettings(BaseSettings):
                 f"{sorted(EMBEDDING_MODEL_DIMENSIONS)}."
             )
 
-        if dimension != DOCUMENT_CHUNKS_EMBEDDING_DIMENSION:
+        if dimension != NOTE_CHUNKS_EMBEDDING_DIMENSION:
             raise ValueError(
                 f"OPENAI_EMBEDDING_MODEL '{self.openai_embedding_model}' "
                 f"produces {dimension}-dimension embeddings, but the "
-                f"document_chunks schema is fixed at "
-                f"VECTOR({DOCUMENT_CHUNKS_EMBEDDING_DIMENSION}). Changing the "
+                f"note_chunks schema is fixed at "
+                f"VECTOR({NOTE_CHUNKS_EMBEDDING_DIMENSION}). Changing the "
                 "embedding model requires a schema migration and "
-                "re-embedding every existing document chunk."
+                "re-embedding every existing note chunk."
             )
 
         return self

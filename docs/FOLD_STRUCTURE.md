@@ -11,7 +11,7 @@ ai-workspace-production/
 │   ├── services/
 │   │   ├── ai/                # Model/Agent execution
 │   │   ├── rag/                # Retrieval + chunking
-│   │   └── documents/          # Ingestion orchestration
+│   │   └── notes/              # Note ingestion orchestration
 │   └── tools/                  # Agent tools
 │
 ├── migrations/               # Alembic DB migrations (raw SQL revisions)
@@ -27,7 +27,7 @@ ai-workspace-production/
 │   │   └── test_event_loop.py         # Windows loop factory never yields ProactorEventLoop
 │   └── integration/            # Real PostgreSQL/pgvector
 │       ├── conftest.py         # Database pool fixture for the integration suite
-│       └── test_tenant_isolation.py
+│       └── test_note_ownership.py  # Owner-scoped retrieval and FK constraints
 ├── evals/                     # AI quality evaluation (real OpenAI calls)
 ├── docs/
 │   ├── ARCHITECTURE.md         # Why the system is shaped this way
@@ -41,7 +41,7 @@ ai-workspace-production/
 ├── Dockerfile                # Non-root, HEALTHCHECK, pinned deps layer, pip check
 ├── docker-compose.yml        # LOCAL DEVELOPMENT stack only
 ├── requirements.txt          # Pinned production dependency lock used by Dockerfile
-├── recovery-guidelines.txt   # Sample knowledge document used by the Quick start and evals
+├── recovery-guidelines.txt   # Sample note content used by the Quick start and evals
 ├── .dockerignore
 ├── .gitignore
 ├── .env.example              # Local development template; production injects config

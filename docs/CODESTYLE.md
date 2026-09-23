@@ -22,7 +22,7 @@ Security boundary (if relevant):
 """
 ```
 
-The `Used by:` section makes it easy to trace which parts of the application depend on this code and guides refactoring decisions. Security boundaries document where tenant isolation or authorization checks happen.
+The `Used by:` section makes it easy to trace which parts of the application depend on this code and guides refactoring decisions. Security boundaries document where ownership or authorization checks happen.
 
 ---
 
@@ -33,10 +33,10 @@ Service and repository functions use **keyword-only arguments** (enforced with `
 ```python
 async def retrieve_knowledge(
     *,
-    tenant_id: UUID,
+    user_id: UUID,
     query: str,
 ) -> list[RetrievalResult]:
-    """Retrieve relevant knowledge for a tenant-scoped query."""
+    """Retrieve relevant chunks from the notes owned by the user."""
     ...
 ```
 
@@ -46,34 +46,35 @@ This ensures callers must be explicit about which argument is which and prevents
 
 ## Security in Repositories
 
-Repositories perform raw SQL queries and **always filter by `tenant_id`** directly in SQL:
+Repositories perform raw SQL queries and **always filter user-owned data by its owner** (`notes.created_by`) directly in SQL:
 
 ```python
 async def search_similar_chunks(
     *,
-    tenant_id: UUID,
+    user_id: UUID,
     embedding: list[float],
     limit: int,
     max_distance: float,
 ) -> list[RetrievalResult]:
-    """Retrieve chunks scoped to the tenant."""
+    """Retrieve chunks belonging only to the user's notes."""
 
-    # Tenant filtering must always be in SQL, never in Python
+    # Owner filtering must always be in SQL, never in Python
     async with pool.connection() as connection:
         rows = await connection.execute(
             """
-            SELECT content, filename
-            FROM document_chunks
-            WHERE tenant_id = %s
-            AND embedding <=> %s <= %s
-            ORDER BY embedding <=> %s
+            SELECT nc.content, n.title
+            FROM note_chunks nc
+            JOIN notes n ON n.id = nc.note_id
+            WHERE n.created_by = %s
+            AND nc.embedding <=> %s < %s
+            ORDER BY nc.embedding <=> %s
             LIMIT %s
             """,
-            (tenant_id, embedding, max_distance, embedding, limit),
+            (user_id, embedding, max_distance, embedding, limit),
         )
 ```
 
-Repositories also include a security boundary comment explaining tenant isolation assumptions.
+Repositories also include a security boundary comment explaining ownership assumptions.
 
 ---
 
@@ -118,10 +119,11 @@ Pydantic schemas define validated contracts for:
 class RetrievalResult(BaseModel):
     """A single chunk returned by semantic search."""
 
+    note_id: UUID
+    title: str
+    chunk_index: int
     content: str
-    filename: str
     distance: float
-    document_id: UUID
 ```
 
 Schemas validate structure and types. If you receive data that does not match the schema, validation fails explicitly rather than silently.
@@ -153,7 +155,7 @@ Constants are stored centrally to avoid typos:
 ```python
 # app/auth/permissions.py
 KNOWLEDGE_READ = "knowledge:read"
-DOCUMENTS_CREATE = "documents:create"
+NOTES_CREATE = "notes:create"
 PROFILE_READ = "profile:read"
 ```
 
@@ -207,7 +209,7 @@ async def handle_assistant_contract_error(
 Structured logging uses `structlog` with **event names in snake_case**:
 
 ```python
-logger.info("document_created", document_id=doc_id, tenant_id=tenant_id)
+logger.info("note_created", note_id=note_id, created_by=user_id)
 logger.warning("request_validation_error", path=request.url.path, error=str(exc))
 logger.error("unhandled_exception", error_type=type(exc).__name__)
 ```
@@ -251,7 +253,7 @@ Function signatures must be fully annotated:
 ```python
 async def retrieve_knowledge(
     *,
-    tenant_id: UUID,
+    user_id: UUID,
     query: str,
 ) -> list[RetrievalResult]:  # Return type required
     ...
@@ -300,13 +302,13 @@ pytest tests/unit -v
 
 Integration tests are located in `tests/integration/` and **require a real PostgreSQL database** with pgvector enabled.
 
-They test multiple components working together, especially tenant isolation.
-`tests/integration/test_tenant_isolation.py` inserts two tenants with the
-same embedding vector through raw SQL, calls the real `search_similar_chunks`
-repository function as tenant A and asserts tenant B's chunk never appears.
-Two further tests prove the database itself rejects a document owned by a user
-from another tenant and a chunk attached to a document from another tenant.
-Each test cleans up with `DELETE FROM tenants`, which cascades.
+They test multiple components working together, especially note ownership.
+`tests/integration/test_note_ownership.py` creates one note per user with the
+same embedding vector, calls the real `search_similar_chunks` repository
+function as user A and asserts user B's chunk never appears. Two further tests
+prove the database itself rejects a note without an existing owner and a
+chunk without an existing note. The ownership test cleans up with
+`DELETE FROM users`, which cascades to notes and chunks.
 
 Run with:
 
@@ -363,8 +365,8 @@ uvicorn main:app --loop app.core.event_loop:loop_factory
 | Topic | Rule |
 |---|---|
 | Modules | Docstring with purpose, responsibilities, `Used by`, and security boundaries |
-| Functions | Keyword-only arguments; services receive tenant context from AppContext, not HTTP |
-| Repositories | Raw SQL with tenant_id filtering; security boundary comment |
+| Functions | Keyword-only arguments; services receive identity from AppContext, not HTTP |
+| Repositories | Raw SQL with owner (`created_by`) filtering; security boundary comment |
 | Schemas | Pydantic contracts for requests, responses, AI outputs, retrieval |
 | Settings | Cached getters from `app/core/config`, never module-level env reads |
 | Permissions | Constants in `app/auth/permissions.py`; every tool checks permission explicitly |

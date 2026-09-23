@@ -15,9 +15,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.chat import router as chat_router
-from app.api.documents import router as documents_router
 from app.api.errors import register_error_handlers
 from app.api.health import router as health_router
+from app.api.notes import router as notes_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import configure_cors, request_id_middleware
@@ -72,4 +72,4 @@ app.middleware("http")(request_id_middleware)
 
 app.include_router(health_router)
 app.include_router(chat_router)
-app.include_router(documents_router)
+app.include_router(notes_router)

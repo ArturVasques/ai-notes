@@ -9,10 +9,10 @@ Runs real AI requests and checks:
 import asyncio
 
 from app.auth.context import AppContext
-from app.auth.permissions import DOCUMENTS_CREATE, KNOWLEDGE_READ, PROFILE_READ
+from app.auth.permissions import KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ
 from app.core.event_loop import loop_factory
 from app.database.connection import close_database_pool, open_database_pool
-from app.database.seed import TENANT_ID, USER_ID
+from app.database.seed import USER_ID
 from app.services.ai.agent_service import run_assistant
 from evals.cases import EVAL_CASES
 
@@ -20,11 +20,10 @@ from evals.cases import EVAL_CASES
 async def run() -> None:
     context = AppContext(
         user_id=USER_ID,
-        tenant_id=TENANT_ID,
         permissions=frozenset(
             {
                 KNOWLEDGE_READ,
-                DOCUMENTS_CREATE,
+                NOTES_CREATE,
                 PROFILE_READ,
             }
         ),
@@ -48,8 +47,7 @@ async def run() -> None:
             )
 
             source_ok = any(
-                source.filename == case["expected_source"]
-                for source in response.sources
+                source.title == case["expected_source"] for source in response.sources
             )
 
             success = concepts_ok and source_ok

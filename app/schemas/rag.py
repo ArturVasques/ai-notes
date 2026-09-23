@@ -3,10 +3,10 @@ Contracts used by the RAG subsystem.
 
 These schemas decouple vector retrieval from agents and HTTP APIs.
 Retrieval returns structured metadata instead of plain strings so callers
-can reason about document provenance, relevance and citations.
+can reason about note provenance, relevance and citations.
 
 Used by:
-- repositories/document_repository.py
+- repositories/note_repository.py
 - services/rag/retrieval_service.py
 - agent knowledge tools
 """
@@ -17,10 +17,10 @@ from pydantic import BaseModel
 
 
 class RetrievalResult(BaseModel):
-    """A chunk retrieved from the tenant's knowledge base."""
+    """A chunk retrieved from the user's notes."""
 
-    document_id: UUID
-    filename: str
+    note_id: UUID
+    title: str
     chunk_index: int
     content: str
     distance: float
