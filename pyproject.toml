@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ai-workspace-production"
+name = "ai-notes"
 version = "1.0.0"
-description = "Production-oriented AI application with FastAPI, OpenAI Agents SDK, PostgreSQL and pgvector."
+description = "AI Notes: FastAPI backend with an OpenAI Agents SDK assistant, tools and RAG over user notes on PostgreSQL + pgvector."
 requires-python = ">=3.13"
 
 dependencies = [

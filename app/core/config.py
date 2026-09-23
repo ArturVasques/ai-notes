@@ -37,7 +37,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #
 # The embedding model is not a free-form value: changing it to a model that
 # produces a different dimensionality requires a schema migration and
-# re-embedding every existing note chunk (see docs/ARCHITECTURE.md).
+# re-embedding every existing note chunk.
 EMBEDDING_MODEL_DIMENSIONS: dict[str, int] = {
     "text-embedding-3-small": 1536,
     "text-embedding-3-large": 3072,
@@ -66,7 +66,7 @@ class AppSettings(BaseSettings):
     # PostgreSQL
     postgres_host: str = "localhost"
     postgres_port: int = 5432
-    postgres_db: str = "ai_workspace_production"
+    postgres_db: str = "ai_notes"
     postgres_user: str = "postgres"
     postgres_password: str
 

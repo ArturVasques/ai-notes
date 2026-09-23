@@ -72,7 +72,7 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg18
         env:
-          POSTGRES_DB: ai_workspace_production
+          POSTGRES_DB: ai_notes
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
@@ -89,7 +89,7 @@ jobs:
 
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ai_workspace_production
+      POSTGRES_DB: ai_notes
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
 

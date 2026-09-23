@@ -47,7 +47,7 @@ def test_tool_schemas_never_expose_identity_parameters() -> None:
 
 async def test_search_knowledge_refuses_without_permission() -> None:
     result = await search_knowledge.on_invoke_tool(
-        _tool_context(set()), '{"query": "recovery guidelines"}'
+        _tool_context(set()), '{"query": "project kickoff"}'
     )
 
     assert result == "Permission denied."

@@ -1,5 +1,5 @@
 """
-Main AI Workspace agent.
+Main AI Notes agent.
 
 The agent handles general application questions and can access only the
 capabilities explicitly registered as tools.
@@ -23,9 +23,9 @@ settings = get_ai_settings()
 
 
 assistant_agent = Agent[AppContext](
-    name="AI Workspace Assistant",
+    name="AI Notes Assistant",
     instructions="""
-    You are the AI assistant for AI Workspace.
+    You are the AI assistant for AI Notes.
 
     Answer general questions directly when no application data is required.
 

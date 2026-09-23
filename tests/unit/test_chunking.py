@@ -24,9 +24,9 @@ def _assert_no_content_lost(normalized: str, chunks: list[str]) -> None:
 
 
 def test_short_text_produces_single_chunk() -> None:
-    result = chunk_text("Recovery guidelines for athletes.")
+    result = chunk_text("Notes are chunked before embedding.")
 
-    assert result == ["Recovery guidelines for athletes."]
+    assert result == ["Notes are chunked before embedding."]
 
 
 def test_long_text_is_split_into_bounded_chunks() -> None:

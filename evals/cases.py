@@ -4,6 +4,10 @@ Evaluation cases for the AI assistant.
 Unlike unit tests, these cases evaluate probabilistic AI behaviour.
 We verify important concepts and source grounding instead of expecting
 an exact sentence from the model.
+
+Prerequisite: the seeded development user must own the sample note created
+with the "Create the sample note" command in HELPER.md (title
+"Project kickoff").
 """
 
 from typing import TypedDict
@@ -20,27 +24,12 @@ class EvalCase(TypedDict):
 
 EVAL_CASES: list[EvalCase] = [
     {
-        "name": "poor_recovery_uses_internal_knowledge",
-        "question": (
-            "According to our internal guidelines, "
-            "what should an athlete with a RecoveryScore of 32 do?"
-        ),
-        "expected_source": "Recovery guidelines",
+        "name": "kickoff_date_uses_user_notes",
+        "question": "According to my notes, when is the project kickoff meeting?",
+        "expected_source": "Project kickoff",
         "required_concepts": [
-            "poor recovery",
-            "avoid intense training",
-        ],
-    },
-    {
-        "name": "good_recovery_uses_internal_knowledge",
-        "question": (
-            "According to our internal guidelines, "
-            "what does a RecoveryScore above 70 indicate?"
-        ),
-        "expected_source": "Recovery guidelines",
-        "required_concepts": [
-            "good recovery",
-            "planned training",
+            "monday",
+            "10:00",
         ],
     },
 ]

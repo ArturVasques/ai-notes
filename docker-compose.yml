@@ -12,19 +12,19 @@
 # Production runs the same Docker image with APP_ENV=production and every
 # setting injected by the deployment platform (container environment,
 # Key Vault, App Configuration), never from this file or from a .env file.
-# See README.md "Environments" and docs/ARCHITECTURE.md section 16.
+# See README.md "Environments".
 
 services:
   db:
     image: pgvector/pgvector:pg18
     environment:
-      POSTGRES_DB: ai_workspace_production
+      POSTGRES_DB: ai_notes
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_workspace_production"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_notes"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -44,7 +44,7 @@ services:
 
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ai_workspace_production
+      POSTGRES_DB: ai_notes
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
 
@@ -64,7 +64,7 @@ services:
 
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ai_workspace_production
+      POSTGRES_DB: ai_notes
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
 
@@ -80,7 +80,7 @@ services:
       RAG_MAX_DISTANCE: 0.8
     ports:
       # Override with API_PORT for a separate stack (e.g. a smoke test run
-      # with `docker compose -p aiws-smoke`) so it does not collide with an
+      # with `docker compose -p ai-notes-smoke`) so it does not collide with an
       # already-running default stack on 8000.
       - "${API_PORT:-8000}:8000"
     depends_on:

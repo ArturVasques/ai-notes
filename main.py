@@ -1,5 +1,5 @@
 """
-AI Workspace application entry point.
+AI Notes application entry point.
 
 Responsibilities:
 - configure application-wide infrastructure.
@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="AI Workspace API",
+    title="AI Notes API",
     version="1.0.0",
     lifespan=lifespan,
 )

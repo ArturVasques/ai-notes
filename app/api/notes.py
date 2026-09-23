@@ -4,8 +4,7 @@ HTTP API for notes.
 Identity always comes from AppContext rather than request parameters: a note
 is owned by the authenticated user who creates it.
 
-Current implementation ingests notes synchronously. Large content should use
-the background ingestion architecture documented in ARCHITECTURE.md.
+Current implementation ingests notes synchronously within the request.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
