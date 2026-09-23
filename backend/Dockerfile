@@ -19,7 +19,7 @@ COPY app ./app
 RUN pip install --no-cache-dir --no-deps . && pip check
 
 # Runtime files required by the application and Alembic.
-COPY migrations ./migrations
+COPY alembic ./alembic
 COPY alembic.ini .
 COPY main.py .
 

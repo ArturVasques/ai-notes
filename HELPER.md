@@ -4,10 +4,15 @@ Commands are shown for PowerShell on Windows; on macOS/Linux replace
 `.\.venv\Scripts\Activate.ps1` with `source .venv/bin/activate` and
 `Copy-Item` with `cp`.
 
+Backend commands run from `backend/`; Docker Compose commands run from the
+repository root.
+
 
 ## Local Development
 
 ```powershell
+cd backend
+
 # Virtual environment and dependencies (application + dev tools)
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -31,6 +36,8 @@ uvicorn main:app --loop app.core.event_loop:loop_factory
 ## Tests and Code Quality
 
 ```powershell
+# From backend/
+
 # Unit tests: no database, no OpenAI calls
 pytest tests/unit -v
 
@@ -50,7 +57,9 @@ python -m evals.run_evals
 ## Docker Compose (local development stack)
 
 ```powershell
-# Build, run migrations, start the API (needs OPENAI_API_KEY in .env)
+# From the repository root.
+# Build, run migrations, start the API (needs OPENAI_API_KEY in the shell or
+# in a root .env read by Compose)
 docker compose up --build -d
 
 # Development user, once per database volume
@@ -80,7 +89,7 @@ docker compose down -v
 Direct dependencies are declared unpinned in `pyproject.toml`.
 `requirements.txt` is the pinned lock the Dockerfile installs; never edit it
 by hand. After changing `pyproject.toml`, regenerate it inside the same image
-the Dockerfile uses:
+the Dockerfile uses (from `backend/`):
 
 ```powershell
 $frozen = docker run --rm -v "${PWD}:/src:ro" python:3.13-slim sh -c "mkdir /build && cp /src/pyproject.toml /build/ && cp -r /src/app /build/app && cd /build && pip install -q --no-cache-dir . 2>/dev/null && pip freeze --exclude ai-notes"

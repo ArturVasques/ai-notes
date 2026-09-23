@@ -26,4 +26,4 @@ Thumbs.db
 *.log
 
 # Eval outputs
-evals/results/
+backend/evals/results/

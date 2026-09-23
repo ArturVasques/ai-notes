@@ -57,6 +57,11 @@ ignore = [
     "B008",
 ]
 
+[tool.ruff.lint.isort]
+# The local alembic/ migrations directory must not make the installed
+# `alembic` package look first-party.
+known-third-party = ["alembic"]
+
 [tool.ruff.lint.per-file-ignores]
 # Integration tests intentionally assert on the database driver's generic
 # constraint-violation exception rather than a specific driver class.
@@ -65,7 +70,7 @@ ignore = [
 [tool.mypy]
 plugins = ["pydantic.mypy"]
 python_version = "3.13"
-files = ["app", "tests", "evals", "migrations/env.py", "main.py"]
+files = ["app", "tests", "evals", "alembic/env.py", "main.py"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true

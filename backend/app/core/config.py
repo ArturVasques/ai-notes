@@ -13,7 +13,7 @@ satisfy AI-only requirements:
 - `AISettings` covers OpenAI model configuration.
 
 Used by:
-- database/connection.py and migrations/env.py for PostgreSQL configuration
+- database/connection.py and alembic/env.py for PostgreSQL configuration
   (AppSettings only).
 - app/auth/dependencies.py for the APP_ENV fail-safe check (AppSettings).
 - AI services (embedding_service, openai bootstrap, assistant agent) for
@@ -33,7 +33,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Contract between the configured embedding model and the fixed
 # `VECTOR(1536)` column defined in
-# migrations/versions/aa7cc31ac6dd_create_initial_schema.py.
+# alembic/versions/aa7cc31ac6dd_create_initial_schema.py.
 #
 # The embedding model is not a free-form value: changing it to a model that
 # produces a different dimensionality requires a schema migration and

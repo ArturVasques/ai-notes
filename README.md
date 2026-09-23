@@ -13,6 +13,19 @@ create notes and ask an AI assistant questions answered from their own notes.
 Commands for every step below are in [`HELPER.md`](HELPER.md).
 
 
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `backend/` | FastAPI app (`app/`), Alembic (`alembic/`), tests, evals, `Dockerfile`, `pyproject.toml` |
+| `frontend/` | Angular app |
+| `docker-compose.yml` | Local development stack for the whole solution |
+| `.github/workflows/` | CI |
+
+Backend commands (`pytest`, `ruff`, `mypy`, `alembic`, `uvicorn`) run from
+`backend/`.
+
+
 ## API
 
 | Endpoint | Purpose |
@@ -27,7 +40,7 @@ Swagger UI is at `http://localhost:8000/docs`.
 ## Authentication boundary
 
 Every request is turned into a trusted `AppContext` (user id + permissions)
-in `app/auth/dependencies.py`. Tools and repositories read identity only from
+in `backend/app/auth/dependencies.py`. Tools and repositories read identity only from
 that context, never from model-generated arguments, and note retrieval is
 filtered by owner in SQL.
 
@@ -40,11 +53,11 @@ endpoints with 501 until a real identity provider replaces that function.
 
 | APP_ENV | Where | Identity | Configuration |
 |---|---|---|---|
-| `development` | Laptop (`uvicorn` + `.env`, or `docker compose`) | `X-User-Id` header | `.env` / `docker-compose.yml` |
+| `development` | Laptop (`uvicorn` + `.env`, or `docker compose`) | `X-User-Id` header | `backend/.env` / `docker-compose.yml` |
 | `test` | CI | None; tests call code directly | Workflow variables |
 | `production` | Container platform, same image | Not implemented yet (501) | Injected by the platform |
 
-`APP_ENV` is required. `.env` is never committed; `.env.example` documents
+`APP_ENV` is required. `.env` is never committed; `backend/.env.example` documents
 every variable.
 
 
