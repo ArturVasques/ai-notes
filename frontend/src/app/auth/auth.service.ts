@@ -26,4 +26,21 @@ export class AuthService {
             postLogoutRedirectUri: 'http://localhost:4200',
         });
     }
+
+    async getAccessToken(): Promise<string> {
+        const account = this.msal.instance.getActiveAccount();
+
+        if (!account) {
+            throw new Error('No authenticated account');
+        }
+
+        const result = await this.msal.instance.acquireTokenSilent({
+            account,
+            scopes: apiScopes,
+        });
+
+        console.log('result: ', result)
+
+        return result.accessToken;
+    }
 }
