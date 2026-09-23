@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { App } from './app';
-import { AuthService } from './auth/auth.service';
+import { AuthService } from './core/auth/auth.service';
 
 describe('App', () => {
   const isAuthenticated = signal(false);
@@ -35,7 +35,11 @@ describe('App', () => {
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
 
+    const buttons = Array.from(compiled.querySelectorAll('button')).map((button) =>
+      button.textContent?.trim(),
+    );
+
     expect(compiled.textContent).toContain('Authenticated');
-    expect(compiled.querySelector('button')).toBeNull();
+    expect(buttons).toEqual(['Logout', 'Load notes']);
   });
 });

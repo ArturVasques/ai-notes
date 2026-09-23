@@ -39,8 +39,6 @@ export class AuthService {
             scopes: apiScopes,
         });
 
-        console.log('result: ', result)
-
         return result.accessToken;
     }
 }

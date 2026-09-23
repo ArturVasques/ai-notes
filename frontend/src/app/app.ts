@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
-import { AuthService } from './auth/auth.service';
-import { NotesService } from './auth/notes/notes.service';
+import { AuthService } from './core/auth/auth.service';
+import { NotesService } from './features/notes/notes.service';
 
 @Component({
   selector: 'app-root',
