@@ -1,0 +1,91 @@
+# LOCAL DEVELOPMENT ONLY.
+#
+# This file describes the developer's laptop environment and nothing else.
+# It is not a production deployment descriptor and must never be used as one:
+#
+#   - APP_ENV is "development", which enables header-based identity
+#     (X-User-Id / X-Tenant-Id) with no identity provider.
+#   - PostgreSQL runs with the throwaway credentials postgres/postgres.
+#   - Configuration is inlined here or read from the local .env file.
+#   - The API is published on a plain HTTP port with no TLS or ingress.
+#
+# Production runs the same Docker image with APP_ENV=production and every
+# setting injected by the deployment platform (container environment,
+# Key Vault, App Configuration), never from this file or from a .env file.
+# See README.md "Environments" and docs/ARCHITECTURE.md section 16.
+
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_DB: ai_workspace_production
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_workspace_production"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      # Alembic only needs AppSettings (see app/core/config.py); it never
+      # constructs AISettings, so no OPENAI_* variables are required here.
+      # APP_ENV is irrelevant to migrations but is kept "development" so this
+      # file reads unambiguously as a local stack.
+      APP_ENV: development
+      LOG_LEVEL: INFO
+
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ai_workspace_production
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+      RAG_TOP_K: 5
+      RAG_MAX_DISTANCE: 0.8
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: INFO
+
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ai_workspace_production
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+      # The only value that must come from outside this file. Compose reads
+      # it from the shell or from a local .env (copy .env.example). A fresh
+      # clone without it fails here with a clear message instead of starting
+      # an API that cannot call OpenAI.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in your shell or in .env (copy .env.example)}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
+      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+
+      RAG_TOP_K: 5
+      RAG_MAX_DISTANCE: 0.8
+    ports:
+      # Override with API_PORT for a separate stack (e.g. a smoke test run
+      # with `docker compose -p aiws-smoke`) so it does not collide with an
+      # already-running default stack on 8000.
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:

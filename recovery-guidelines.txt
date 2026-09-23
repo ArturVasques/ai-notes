@@ -1,0 +1,10 @@
+﻿AI Workspace internal recovery guidelines.
+
+A RecoveryScore below 40 indicates poor recovery.
+Athletes should avoid intense training and consider a recovery day.
+
+A RecoveryScore between 40 and 70 indicates moderate recovery.
+Light or moderate exercise may be appropriate.
+
+A RecoveryScore above 70 indicates good recovery and the athlete
+may proceed with planned training.
