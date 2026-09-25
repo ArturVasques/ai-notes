@@ -14,17 +14,21 @@
 # Key Vault, App Configuration), never from this file or from a .env file.
 # See README.md "Environments".
 
+# Fixed project name so container, network and volume names do not depend on
+# the local folder name.
+name: personal-finance
+
 services:
   db:
-    image: pgvector/pgvector:pg18
+    image: postgres:18
     environment:
-      POSTGRES_DB: ai_notes
+      POSTGRES_DB: personal_finance
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_notes"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d personal_finance"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -35,8 +39,6 @@ services:
       dockerfile: Dockerfile
     command: ["alembic", "upgrade", "head"]
     environment:
-      # Alembic only needs AppSettings (see app/core/config.py); it never
-      # constructs AISettings, so no OPENAI_* variables are required here.
       # APP_ENV is irrelevant to migrations but is kept "development" so this
       # file reads unambiguously as a local stack.
       APP_ENV: development
@@ -44,12 +46,9 @@ services:
 
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ai_notes
+      POSTGRES_DB: personal_finance
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-
-      RAG_TOP_K: 5
-      RAG_MAX_DISTANCE: 0.8
     depends_on:
       db:
         condition: service_healthy
@@ -65,23 +64,12 @@ services:
 
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ai_notes
+      POSTGRES_DB: personal_finance
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-
-      # The only value that must come from outside this file. Compose reads
-      # it from the shell or from a local .env (see backend/.env.example). A fresh
-      # clone without it fails here with a clear message instead of starting
-      # an API that cannot call OpenAI.
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in your shell or in .env (see backend/.env.example)}
-      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-luna}
-      OPENAI_EMBEDDING_MODEL: ${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
-
-      RAG_TOP_K: 5
-      RAG_MAX_DISTANCE: 0.8
     ports:
       # Override with API_PORT for a separate stack (e.g. a smoke test run
-      # with `docker compose -p ai-notes-smoke`) so it does not collide with an
+      # with `docker compose -p personal-finance-smoke`) so it does not collide with an
       # already-running default stack on 8000.
       - "${API_PORT:-8000}:8000"
     depends_on:

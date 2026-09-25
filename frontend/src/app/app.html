@@ -1,7 +1,6 @@
 @if (isAuthenticated()) {
   <p>Authenticated</p>
   <button (click)="logout()">Logout</button>
-  <button (click)="loadNotes()">Load notes</button>
 } @else {
   <button (click)="login()">Login with Microsoft</button>
 }

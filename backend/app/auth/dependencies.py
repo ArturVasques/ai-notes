@@ -8,7 +8,7 @@ run locally without requiring an external identity provider.
 
 Production:
 Replace the development implementation with Entra ID JWT validation while
-keeping AppContext and all downstream agents/tools unchanged.
+keeping AppContext and all downstream services unchanged.
 
 Security:
 Development header authentication must never be enabled in production.
@@ -19,7 +19,7 @@ from uuid import UUID
 from fastapi import Header, HTTPException, status
 
 from app.auth.context import AppContext
-from app.auth.permissions import KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ
+from app.auth.permissions import FINANCE_READ, FINANCE_WRITE, PROFILE_READ
 from app.core.config import AppEnv, get_settings
 
 settings = get_settings()
@@ -56,8 +56,8 @@ async def get_app_context(
         user_id=x_user_id,
         permissions=frozenset(
             {
-                KNOWLEDGE_READ,
-                NOTES_CREATE,
+                FINANCE_READ,
+                FINANCE_WRITE,
                 PROFILE_READ,
             }
         ),

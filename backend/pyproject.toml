@@ -3,19 +3,16 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ai-notes"
-version = "1.0.0"
-description = "AI Notes: FastAPI backend with an OpenAI Agents SDK assistant, tools and RAG over user notes on PostgreSQL + pgvector."
+name = "personal-finance"
+version = "0.1.0"
+description = "Personal Finance: mobile-first personal finance API built with FastAPI and PostgreSQL."
 requires-python = ">=3.13"
 
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "openai",
-    "openai-agents",
     "pydantic-settings",
     "psycopg[binary,pool]",
-    "pgvector",
     "alembic",
     "structlog",
 ]
@@ -70,7 +67,7 @@ known-third-party = ["alembic"]
 [tool.mypy]
 plugins = ["pydantic.mypy"]
 python_version = "3.13"
-files = ["app", "tests", "evals", "alembic/env.py", "main.py"]
+files = ["app", "tests", "alembic/env.py", "main.py"]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 check_untyped_defs = true
@@ -78,7 +75,3 @@ no_implicit_optional = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_return_any = false
-
-[[tool.mypy.overrides]]
-module = ["agents.*", "agents", "pgvector.*"]
-ignore_missing_imports = true

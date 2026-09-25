@@ -16,7 +16,7 @@ Used by:
   A custom `--loop` import string is used by uvicorn as a ready-to-call,
   zero-argument loop factory (see uvicorn.config.Config.get_loop_factory),
   which is exactly the shape `loop_factory` below has.
-- app/database/seed.py and evals/run_evals.py, passed directly as
+- app/database/seed.py, passed directly as
   `asyncio.run(coro(), loop_factory=loop_factory)`.
 - tests/integration/conftest.py, via configure_windows_event_loop_policy(),
   so pytest-asyncio creates its loops the same way.

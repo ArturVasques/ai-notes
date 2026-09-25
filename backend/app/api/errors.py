@@ -1,20 +1,12 @@
 """
 Uniform HTTP error handling.
 
-Domain ValueErrors raised by services (e.g. ingestion_service rejecting an
-empty note) become a consistent 400 JSON body instead of an unhandled
-500 with a leaked traceback. An AssistantContractError from the assistant
-output contract becomes a 502 instead of a stack trace. Every other
-unexpected exception is logged with structlog and returns a generic body
-that never leaks internals to the client.
-
-AssistantContractError (not TypeError) is registered deliberately: mapping
-every TypeError app-wide to "the assistant returned an unexpected response"
-would misclassify an unrelated bug elsewhere in the request path (e.g. a
-wrong-arity call in a repository) as an AI upstream failure, actively
-misleading incident triage. Only the one narrow, intentional failure mode
-in agent_service.py should ever produce a 502 here; any other TypeError
-falls through to handle_unexpected_error's masked 500, which is correct.
+Domain ValueErrors raised by services (a business rule rejecting the
+request) become a consistent 400 JSON body instead of an unhandled 500 with
+a leaked traceback. The application errors in app/core/errors.py map to 403,
+404 and 409 with the same body shape. Every other unexpected exception is
+logged with structlog and returns a generic body that never leaks internals
+to the client.
 
 A handler registered for the exact `Exception` class (the masked-500
 fallback below) is special-cased by Starlette into ServerErrorMiddleware,
@@ -32,9 +24,9 @@ Used by:
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
+from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError
 from app.core.logging import get_logger
 from app.core.middleware import REQUEST_ID_HEADER
-from app.services.ai.agent_service import AssistantContractError
 
 logger = get_logger()
 
@@ -69,23 +61,28 @@ async def handle_value_error(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
-async def handle_assistant_contract_error(
+async def handle_not_found_error(request: Request, exc: Exception) -> JSONResponse:
+    """Translate a missing (or not owned) resource into a 404 response."""
+
+    return _error_response(request, status.HTTP_404_NOT_FOUND, "NOT_FOUND", str(exc))
+
+
+async def handle_conflict_error(request: Request, exc: Exception) -> JSONResponse:
+    """Translate a state conflict into a 409 response."""
+
+    logger.info("request_conflict", path=request.url.path, error=str(exc))
+
+    return _error_response(request, status.HTTP_409_CONFLICT, "CONFLICT", str(exc))
+
+
+async def handle_permission_denied_error(
     request: Request, exc: Exception
 ) -> JSONResponse:
-    """Translate an unexpected assistant output contract failure into 502."""
+    """Translate a missing permission into a 403 response."""
 
-    logger.error(
-        "assistant_output_contract_violation",
-        path=request.url.path,
-        error=str(exc),
-    )
+    logger.warning("permission_denied", path=request.url.path)
 
-    return _error_response(
-        request,
-        status.HTTP_502_BAD_GATEWAY,
-        "UPSTREAM_ERROR",
-        "The assistant returned an unexpected response",
-    )
+    return _error_response(request, status.HTTP_403_FORBIDDEN, "FORBIDDEN", str(exc))
 
 
 async def handle_unexpected_error(request: Request, exc: Exception) -> JSONResponse:
@@ -110,5 +107,7 @@ def register_error_handlers(app: FastAPI) -> None:
     """Register uniform error handlers for the application."""
 
     app.add_exception_handler(ValueError, handle_value_error)
-    app.add_exception_handler(AssistantContractError, handle_assistant_contract_error)
+    app.add_exception_handler(NotFoundError, handle_not_found_error)
+    app.add_exception_handler(ConflictError, handle_conflict_error)
+    app.add_exception_handler(PermissionDeniedError, handle_permission_denied_error)
     app.add_exception_handler(Exception, handle_unexpected_error)

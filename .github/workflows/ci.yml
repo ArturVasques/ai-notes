@@ -49,14 +49,11 @@ jobs:
     env:
       # No PostgreSQL service is attached to this job on purpose and
       # POSTGRES_PORT points at a closed port: the unit suite must pass with
-      # no database reachable. The OpenAI key is a placeholder that is never
-      # used for a call; it only satisfies AISettings when the HTTP-level
-      # tests import the application.
+      # no database reachable.
       APP_ENV: test
       LOG_LEVEL: INFO
       POSTGRES_PORT: "1"
       POSTGRES_PASSWORD: unused-in-unit-tests
-      OPENAI_API_KEY: unit-tests-never-call-openai
 
     steps:
       - name: Checkout repository
@@ -85,9 +82,9 @@ jobs:
 
     services:
       postgres:
-        image: pgvector/pgvector:pg18
+        image: postgres:18
         env:
-          POSTGRES_DB: ai_notes
+          POSTGRES_DB: personal_finance
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         ports:
@@ -104,12 +101,9 @@ jobs:
 
       POSTGRES_HOST: localhost
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ai_notes
+      POSTGRES_DB: personal_finance
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-
-      RAG_TOP_K: 5
-      RAG_MAX_DISTANCE: 0.8
 
     steps:
       - name: Checkout repository
@@ -134,11 +128,6 @@ jobs:
   docker-smoke:
     runs-on: ubuntu-latest
     needs: [quality, unit-tests, integration-tests]
-
-    env:
-      # Placeholder only: the smoke test never calls OpenAI. It exists so the
-      # api service can start (AISettings requires a non-empty key).
-      OPENAI_API_KEY: ci-smoke-never-calls-openai
 
     steps:
       - name: Checkout repository

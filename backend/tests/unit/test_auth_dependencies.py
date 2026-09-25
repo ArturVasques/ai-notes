@@ -12,8 +12,10 @@ import pytest
 from fastapi import HTTPException
 
 import app.auth.dependencies as dependencies
-from app.auth.permissions import KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ
+from app.auth.context import AppContext
+from app.auth.permissions import FINANCE_READ, FINANCE_WRITE, PROFILE_READ
 from app.core.config import AppEnv, AppSettings
+from app.core.errors import PermissionDeniedError
 
 
 def _settings_for(app_env: AppEnv, monkeypatch: pytest.MonkeyPatch) -> AppSettings:
@@ -59,4 +61,13 @@ async def test_development_builds_trusted_context_from_headers(
     context = await dependencies.get_app_context(x_user_id=user_id)
 
     assert context.user_id == user_id
-    assert context.permissions == {KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ}
+    assert context.permissions == {FINANCE_READ, FINANCE_WRITE, PROFILE_READ}
+
+
+def test_require_permission_raises_when_missing() -> None:
+    context = AppContext(user_id=uuid4(), permissions=frozenset({FINANCE_READ}))
+
+    context.require_permission(FINANCE_READ)
+
+    with pytest.raises(PermissionDeniedError):
+        context.require_permission(FINANCE_WRITE)

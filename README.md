@@ -1,14 +1,20 @@
-# AI Notes
+# Personal Finance
 
-AI Notes is a small educational, production-oriented application: users
-create notes and ask an AI assistant questions answered from their own notes.
+Personal Finance is a small, mobile-first personal finance application and a
+production-oriented engineering laboratory. It is designed to be used daily
+on an iPhone (Safari → Add to Home Screen).
 
 - **Backend:** FastAPI (`API → Service → Repository`), raw SQL through psycopg.
-- **Data:** PostgreSQL + pgvector. `users` → `notes` → `note_chunks`, with
-  embeddings in an HNSW index. Migrations with Alembic.
-- **AI:** an OpenAI Agents SDK assistant with tools (`get_my_profile`,
-  `search_knowledge`) and RAG over the notes owned by the caller. Answers are
-  a structured output (`AssistantResponse`) that cites note titles.
+- **Data:** PostgreSQL 18. Migrations with Alembic.
+- **Frontend:** Angular with Microsoft Entra ID sign-in through MSAL.
+- **Domain:** accounts, categories, income, expenses, transfers, savings,
+  investments and reimbursements. See [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md).
+- **Roadmap:** [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+Current state: backend finance domain (F1): accounts, categories,
+investment assets and the five transaction kinds with their integrity rules.
+Reports (F2) and the financial frontend come next. There is no AI in this
+phase.
 
 Commands for every step below are in [`HELPER.md`](HELPER.md).
 
@@ -17,8 +23,9 @@ Commands for every step below are in [`HELPER.md`](HELPER.md).
 
 | Path | Contents |
 |---|---|
-| `backend/` | FastAPI app (`app/`), Alembic (`alembic/`), tests, evals, `Dockerfile`, `pyproject.toml` |
+| `backend/` | FastAPI app (`app/`), Alembic (`alembic/`), tests, `Dockerfile`, `pyproject.toml` |
 | `frontend/` | Angular app |
+| `docs/` | Domain model and engineering roadmap |
 | `docker-compose.yml` | Local development stack for the whole solution |
 | `.github/workflows/` | CI |
 
@@ -30,23 +37,31 @@ Backend commands (`pytest`, `ruff`, `mypy`, `alembic`, `uvicorn`) run from
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /notes` | Create a note from JSON `title` + `content`; it is chunked, embedded and stored. |
-| `POST /chat` | Ask the assistant; it searches only the caller's notes. |
+| `GET/POST /accounts`, `GET/PATCH /accounts/{id}` | Accounts; archive/restore with `PATCH {"archived": true/false}`. |
+| `GET/POST /categories`, `GET/PATCH /categories/{id}` | Income and expense categories with icon keys; archive/restore. |
+| `GET/POST /investment-assets`, `GET/PATCH /investment-assets/{id}` | Investment destinations; archive/restore. |
+| `GET/POST /transactions`, `GET/PATCH/DELETE /transactions/{id}` | Income, expense, transfer, investment and reimbursement; filters and keyset pagination. |
 | `GET /health/live`, `GET /health/ready` | Process and database health. |
 
+Money is always an integer number of cents (`amount_minor`). Rules and error
+codes are documented in [`docs/DOMAIN_MODEL.md`](docs/DOMAIN_MODEL.md).
 Swagger UI is at `http://localhost:8000/docs`.
 
 
 ## Authentication boundary
 
 Every request is turned into a trusted `AppContext` (user id + permissions)
-in `backend/app/auth/dependencies.py`. Tools and repositories read identity only from
-that context, never from model-generated arguments, and note retrieval is
-filtered by owner in SQL.
+in `backend/app/auth/dependencies.py`. Services and repositories read
+identity only from that context, never from the request body.
 
 Today this boundary uses a development header, `X-User-Id`, accepted only
 when `APP_ENV=development`. Any other environment answers authenticated
-endpoints with 501 until a real identity provider replaces that function.
+endpoints with 501 until Entra JWT validation replaces that function (next
+milestone).
+
+The Angular app signs in with MSAL and sends only the Entra Bearer access
+token. Until the backend validates it, browser calls to authenticated
+endpoints are expected to fail; the frontend never sends `X-User-Id`.
 
 
 ## Environments
@@ -64,25 +79,24 @@ every variable.
 ## Tests
 
 - `pytest tests/unit`: no database, no network.
-- `pytest tests/integration`: real PostgreSQL + pgvector (note ownership and
-  constraints).
-- `python -m evals.run_evals`: real OpenAI calls against a sample note.
+- `pytest tests/integration`: real PostgreSQL with migrations applied.
 - `ruff check .`, `ruff format --check .`, `mypy`.
+- Frontend: `npm test` (Vitest) and `npm run build` from `frontend/`.
 
-CI (`.github/workflows/ci.yml`) runs the quality gates, unit tests,
+CI (`.github/workflows/ci.yml`) runs the backend quality gates, unit tests,
 integration tests against a PostgreSQL service and a Docker Compose smoke
 test.
 
 
 ## Docker
 
-`docker compose up --build -d` starts PostgreSQL, runs the migrations and
+`docker compose up --build -d` starts PostgreSQL 18, runs the migrations and
 starts the API. The compose file is a local development stack only; the
 image runs as a non-root user with a healthcheck.
 
 
 ## Not included yet
 
-Planned for later: an Angular frontend, real Entra ID authentication, Azure
-deployment, asynchronous ingestion, observability beyond structured logs, and
-MCP.
+Reports (F2), the financial frontend, Entra JWT validation in the API, PWA configuration,
+Azure deployment, asynchronous processing, observability beyond structured
+logs, AI agent + tools, and MCP. See the roadmap.

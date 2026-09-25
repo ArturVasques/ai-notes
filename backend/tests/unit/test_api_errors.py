@@ -2,35 +2,33 @@
 HTTP-level regression tests for the error contract and request correlation.
 
 Bugs covered:
-- an empty note used to surface as an unhandled 500 with a traceback;
-  it must be a 400 VALIDATION_ERROR.
+- a domain ValueError raised by a service used to surface as an unhandled
+  500 with a traceback; it must be a 400 VALIDATION_ERROR.
 - unexpected exceptions must be masked as 500 INTERNAL_ERROR without leaking
   the message, and still carry X-Request-ID (Starlette's ServerErrorMiddleware
   bypasses the request-id middleware on that path).
-- only AssistantContractError maps to 502 UPSTREAM_ERROR.
+- NotFoundError, ConflictError and PermissionDeniedError map to 404, 409
+  and 403 with the same body shape.
 - CORS is closed unless origins are explicitly configured.
 
-The app is used without its lifespan (no `with TestClient(...)`), so no
-database pool is opened and nothing reaches OpenAI.
+Failure paths use a small application wired exactly like main.py (error
+handlers, then the request-id middleware) with routes that raise, because
+the finance endpoints do not exist yet. Nothing opens a database pool.
 """
 
 import re
 from collections.abc import Iterator
-from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.middleware.cors import CORSMiddleware
 
-import app.api.chat as chat_api
-import app.api.notes as notes_api
 import app.core.middleware as middleware
-from app.auth.context import AppContext
-from app.auth.dependencies import get_app_context
-from app.auth.permissions import KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ
+from app.api.errors import register_error_handlers
 from app.core.config import AppSettings
-from app.services.ai.agent_service import AssistantContractError
+from app.core.errors import ConflictError, NotFoundError, PermissionDeniedError
+from app.core.middleware import request_id_middleware
 from main import app
 
 UUID_PATTERN = re.compile(
@@ -38,66 +36,67 @@ UUID_PATTERN = re.compile(
 )
 
 
-def _trusted_context() -> AppContext:
-    return AppContext(
-        user_id=uuid4(),
-        permissions=frozenset({KNOWLEDGE_READ, NOTES_CREATE, PROFILE_READ}),
-    )
+def _app_with_failing_routes() -> FastAPI:
+    failing = FastAPI()
+
+    register_error_handlers(failing)
+    failing.middleware("http")(request_id_middleware)
+
+    @failing.get("/domain-error")
+    async def domain_error() -> None:
+        raise ValueError("Amount must be positive")
+
+    @failing.get("/unexpected-error")
+    async def unexpected_error() -> None:
+        raise RuntimeError("database credentials are hunter2")
+
+    @failing.get("/type-error")
+    async def type_error() -> None:
+        raise TypeError("unexpected keyword argument")
+
+    @failing.get("/not-found")
+    async def not_found() -> None:
+        raise NotFoundError("Account not found")
+
+    @failing.get("/conflict")
+    async def conflict() -> None:
+        raise ConflictError("An active account with this name already exists")
+
+    @failing.get("/forbidden")
+    async def forbidden() -> None:
+        raise PermissionDeniedError("Insufficient permissions")
+
+    return failing
 
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    app.dependency_overrides[get_app_context] = _trusted_context
-
     yield TestClient(app, raise_server_exceptions=False)
 
-    app.dependency_overrides.clear()
+
+@pytest.fixture
+def failing_client() -> Iterator[TestClient]:
+    yield TestClient(_app_with_failing_routes(), raise_server_exceptions=False)
 
 
-def test_blank_note_returns_validation_error(client: TestClient) -> None:
-    response = client.post(
-        "/notes",
-        json={"title": "Blank", "content": "   \n\n  "},
-    )
+def test_domain_value_error_returns_validation_error(
+    failing_client: TestClient,
+) -> None:
+    response = failing_client.get("/domain-error")
 
     assert response.status_code == 400
     assert response.json() == {
         "code": "VALIDATION_ERROR",
-        "message": "Note contains no usable text",
+        "message": "Amount must be positive",
     }
     assert UUID_PATTERN.match(response.headers["x-request-id"])
 
 
-def test_note_without_title_is_rejected(client: TestClient) -> None:
-    response = client.post("/notes", json={"content": "some real content"})
-
-    assert response.status_code == 422
-
-
-def test_note_creation_requires_notes_create_permission(
-    client: TestClient,
-) -> None:
-    app.dependency_overrides[get_app_context] = lambda: AppContext(
-        user_id=uuid4(), permissions=frozenset({KNOWLEDGE_READ})
-    )
-
-    response = client.post("/notes", json={"title": "Note", "content": "content"})
-
-    assert response.status_code == 403
-
-
 def test_unexpected_exception_is_masked_and_correlated(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    failing_client: TestClient,
 ) -> None:
-    async def explode(**kwargs: object) -> None:
-        raise RuntimeError("database credentials are hunter2")
-
-    monkeypatch.setattr(notes_api, "ingest_note", explode)
-
-    response = client.post(
-        "/notes",
-        json={"title": "Note", "content": "some real content"},
-        headers={"X-Request-ID": "corr-123"},
+    response = failing_client.get(
+        "/unexpected-error", headers={"X-Request-ID": "corr-123"}
     )
 
     assert response.status_code == 500
@@ -109,38 +108,33 @@ def test_unexpected_exception_is_masked_and_correlated(
     assert response.headers["x-request-id"] == "corr-123"
 
 
-def test_unrelated_type_error_is_not_reported_as_upstream_failure(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    async def wrong_arity(**kwargs: object) -> None:
-        raise TypeError("unexpected keyword argument")
-
-    monkeypatch.setattr(notes_api, "ingest_note", wrong_arity)
-
-    response = client.post(
-        "/notes",
-        json={"title": "Note", "content": "content"},
-    )
+def test_type_error_is_masked_as_internal_error(failing_client: TestClient) -> None:
+    response = failing_client.get("/type-error")
 
     assert response.status_code == 500
     assert response.json()["code"] == "INTERNAL_ERROR"
 
 
-def test_assistant_contract_violation_returns_upstream_error(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("path", "status_code", "code", "message"),
+    [
+        ("/not-found", 404, "NOT_FOUND", "Account not found"),
+        (
+            "/conflict",
+            409,
+            "CONFLICT",
+            "An active account with this name already exists",
+        ),
+        ("/forbidden", 403, "FORBIDDEN", "Insufficient permissions"),
+    ],
+)
+def test_application_errors_map_to_http_status(
+    failing_client: TestClient, path: str, status_code: int, code: str, message: str
 ) -> None:
-    async def broken_assistant(**kwargs: object) -> None:
-        raise AssistantContractError("Assistant returned an unexpected output type")
+    response = failing_client.get(path)
 
-    monkeypatch.setattr(chat_api, "run_assistant", broken_assistant)
-
-    response = client.post("/chat", json={"message": "hello"})
-
-    assert response.status_code == 502
-    assert response.json() == {
-        "code": "UPSTREAM_ERROR",
-        "message": "The assistant returned an unexpected response",
-    }
+    assert response.status_code == status_code
+    assert response.json() == {"code": code, "message": message}
     assert UUID_PATTERN.match(response.headers["x-request-id"])
 
 
@@ -160,6 +154,10 @@ def test_cors_is_closed_by_default(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert "access-control-allow-origin" not in response.headers
+
+
+def test_api_metadata_uses_the_personal_finance_name(client: TestClient) -> None:
+    assert app.title == "Personal Finance API"
 
 
 def _settings_with_cors(origins: str, monkeypatch: pytest.MonkeyPatch) -> AppSettings:

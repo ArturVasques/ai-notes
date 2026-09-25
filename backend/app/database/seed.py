@@ -1,8 +1,9 @@
 """
 Development-only database seed.
 
-Creates deterministic local identities required to exercise authenticated
-application flows without an external identity provider.
+Creates a deterministic local identity required to exercise authenticated
+application flows without an external identity provider, and provisions its
+default categories (idempotent, safe to run repeatedly).
 
 Never run development seed data in production.
 """
@@ -13,12 +14,13 @@ from uuid import UUID
 from app.core.config import AppEnv, get_settings
 from app.core.event_loop import loop_factory
 from app.database.connection import close_database_pool, open_database_pool, pool
+from app.services.finance.categories_service import provision_default_categories
 
 USER_ID = UUID("22222222-2222-2222-2222-222222222222")
 
 
 async def seed() -> None:
-    """Insert the local development user."""
+    """Insert the local development user and its default categories."""
 
     settings = get_settings()
 
@@ -47,6 +49,8 @@ async def seed() -> None:
                     "developer@example.com",
                 ),
             )
+
+            await provision_default_categories(connection, user_id=USER_ID)
 
     finally:
         await close_database_pool()

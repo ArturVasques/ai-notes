@@ -3,10 +3,9 @@ User contracts exposed outside the persistence layer.
 
 Used by:
 - user repository.
-- agent tools.
-- future HTTP APIs.
+- future HTTP APIs and services.
 
-Database rows should not leak directly into agents or API responses.
+Database rows should not leak directly into API responses.
 """
 
 from uuid import UUID

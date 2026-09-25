@@ -2,11 +2,10 @@
 Persistence operations for application users.
 
 Used by:
-- user tools.
-- future authentication/user services.
+- future authentication/user provisioning services.
 
 This repository contains PostgreSQL concerns only and knows nothing about
-agents or HTTP authentication.
+HTTP authentication.
 """
 
 from uuid import UUID

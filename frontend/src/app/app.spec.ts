@@ -40,6 +40,6 @@ describe('App', () => {
     );
 
     expect(compiled.textContent).toContain('Authenticated');
-    expect(buttons).toEqual(['Logout', 'Load notes']);
+    expect(buttons).toEqual(['Logout']);
   });
 });
