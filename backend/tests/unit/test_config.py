@@ -18,7 +18,13 @@ APP_ENV_VARIABLES = (
     "APP_ENV",
     "POSTGRES_DB",
     "POSTGRES_PASSWORD",
+    "ENTRA_TENANT_ID",
+    "ENTRA_API_CLIENT_ID",
+    "ENTRA_REQUIRED_SCOPE",
 )
+
+TENANT_ID = "11111111-1111-1111-1111-111111111111"
+API_CLIENT_ID = "22222222-2222-2222-2222-222222222222"
 
 
 @pytest.fixture(autouse=True)
@@ -27,6 +33,39 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(variable, raising=False)
 
     monkeypatch.setenv("POSTGRES_PASSWORD", "unit-test-password")
+    monkeypatch.setenv("ENTRA_TENANT_ID", TENANT_ID)
+    monkeypatch.setenv("ENTRA_API_CLIENT_ID", API_CLIENT_ID)
+
+
+def test_missing_entra_configuration_fails_settings_loading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.delenv("ENTRA_TENANT_ID")
+    monkeypatch.setenv("ENTRA_API_CLIENT_ID", "")
+
+    with pytest.raises(ValidationError) as error:
+        AppSettings(_env_file=None)
+
+    failing_fields = {str(item["loc"][0]) for item in error.value.errors()}
+
+    assert failing_fields == {"entra_tenant_id", "entra_api_client_id"}
+
+
+def test_entra_contract_is_derived_from_the_tenant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+
+    settings = AppSettings(_env_file=None)
+
+    assert settings.entra_required_scope == "access_as_user"
+    assert (
+        settings.entra_issuer == f"https://login.microsoftonline.com/{TENANT_ID}/v2.0"
+    )
+    assert settings.entra_jwks_url == (
+        f"https://login.microsoftonline.com/{TENANT_ID}/discovery/v2.0/keys"
+    )
 
 
 def test_missing_app_env_fails_settings_loading(

@@ -19,6 +19,8 @@ from app.api.categories import router as categories_router
 from app.api.errors import register_error_handlers
 from app.api.health import router as health_router
 from app.api.investment_assets import router as investment_assets_router
+from app.api.me import router as me_router
+from app.api.reports import router as reports_router
 from app.api.transactions import router as transactions_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
@@ -73,7 +75,9 @@ configure_cors(app)
 app.middleware("http")(request_id_middleware)
 
 app.include_router(health_router)
+app.include_router(me_router)
 app.include_router(accounts_router)
 app.include_router(categories_router)
 app.include_router(investment_assets_router)
 app.include_router(transactions_router)
+app.include_router(reports_router)

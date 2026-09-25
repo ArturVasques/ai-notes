@@ -19,6 +19,7 @@
     "@angular/router": "^22.1.0",
     "@azure/msal-angular": "^6.2.1",
     "@azure/msal-browser": "^5.23.0",
+    "lucide": "^1.48.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },

@@ -6,7 +6,7 @@ keep their classification. Identity always comes from the trusted AppContext.
 
 Used by:
 - api/categories.py
-- app/database/seed.py and future user provisioning (default categories).
+- services/users_service.py: default categories on first login.
 - future AI agent tools and MCP, through the same functions.
 """
 

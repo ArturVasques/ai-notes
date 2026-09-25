@@ -40,9 +40,13 @@ def upgrade() -> None:
     op.execute("""
         CREATE TABLE users (
             id UUID PRIMARY KEY,
+            -- Microsoft Entra object id (`oid`). Single-tenant: the oid
+            -- alone identifies a person; multi-tenant would need (tid, oid).
             external_identity_id TEXT NOT NULL UNIQUE,
             name TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
+            -- Informational only: access tokens do not guarantee an email
+            -- claim and email is never an identity key.
+            email TEXT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     """)

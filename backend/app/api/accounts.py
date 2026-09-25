@@ -6,6 +6,7 @@ belongs to the authenticated user who creates it. Business rules live in
 services/finance/accounts_service.py.
 """
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
@@ -13,6 +14,7 @@ from fastapi import APIRouter, Depends, status
 from app.auth.context import AppContext
 from app.auth.dependencies import get_app_context
 from app.schemas.account import Account, AccountCreate, AccountUpdate
+from app.schemas.report import AccountBalances
 from app.services.finance import accounts_service
 
 router = APIRouter(
@@ -41,6 +43,20 @@ async def create_account(
     """Create an account owned by the caller."""
 
     return await accounts_service.create_account(context, request)
+
+
+# Declared before "/{account_id}" so the literal path wins.
+@router.get("/balances", response_model=AccountBalances)
+async def get_account_balances(
+    as_of: date | None = None,
+    include_archived: bool = False,
+    context: AppContext = Depends(get_app_context),
+) -> AccountBalances:
+    """Current balance of every account (opening balance + movements)."""
+
+    return await accounts_service.get_account_balances(
+        context, as_of=as_of, include_archived=include_archived
+    )
 
 
 @router.get("/{account_id}", response_model=Account)

@@ -3,10 +3,9 @@
 # This file describes the developer's laptop environment and nothing else.
 # It is not a production deployment descriptor and must never be used as one:
 #
-#   - APP_ENV is "development", which enables header-based identity
-#     (X-User-Id) with no identity provider.
 #   - PostgreSQL runs with the throwaway credentials postgres/postgres.
-#   - Configuration is inlined here or read from the local .env file.
+#   - Configuration is inlined here or read from the local .env file; the
+#     Entra identifiers must come from the shell or the root .env.
 #   - The API is published on a plain HTTP port with no TLS or ingress.
 #
 # Production runs the same Docker image with APP_ENV=production and every
@@ -49,6 +48,11 @@ services:
       POSTGRES_DB: personal_finance
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+
+      # Settings are validated as a whole, so migrations need the Entra
+      # identifiers too even though they never validate a token.
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:?Set ENTRA_TENANT_ID in your shell or in .env (see backend/.env.example)}
+      ENTRA_API_CLIENT_ID: ${ENTRA_API_CLIENT_ID:?Set ENTRA_API_CLIENT_ID in your shell or in .env (see backend/.env.example)}
     depends_on:
       db:
         condition: service_healthy
@@ -67,6 +71,12 @@ services:
       POSTGRES_DB: personal_finance
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+
+      # Public identifiers of the Entra tenant and API app registration
+      # (see backend/.env.example). Never a client secret.
+      ENTRA_TENANT_ID: ${ENTRA_TENANT_ID:?Set ENTRA_TENANT_ID in your shell or in .env (see backend/.env.example)}
+      ENTRA_API_CLIENT_ID: ${ENTRA_API_CLIENT_ID:?Set ENTRA_API_CLIENT_ID in your shell or in .env (see backend/.env.example)}
+      ENTRA_REQUIRED_SCOPE: ${ENTRA_REQUIRED_SCOPE:-access_as_user}
     ports:
       # Override with API_PORT for a separate stack (e.g. a smoke test run
       # with `docker compose -p personal-finance-smoke`) so it does not collide with an

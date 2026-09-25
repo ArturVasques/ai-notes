@@ -15,6 +15,7 @@ dependencies = [
     "psycopg[binary,pool]",
     "alembic",
     "structlog",
+    "PyJWT[crypto]>=2.10,<3",
 ]
 
 [project.optional-dependencies]

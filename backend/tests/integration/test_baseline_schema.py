@@ -125,14 +125,33 @@ async def test_user_external_identity_must_be_unique(user: AppContext) -> None:
         )
 
 
-async def test_user_email_must_be_unique(user: AppContext) -> None:
-    with pytest.raises(errors.UniqueViolation):
+async def test_user_email_is_optional_and_not_an_identity_key(
+    user: AppContext,
+) -> None:
+    """Email may be missing or shared; only external_identity_id identifies."""
+
+    first = f"test-{uuid4()}"
+    second = f"test-{uuid4()}"
+
+    try:
         await _execute(
             """
             INSERT INTO users (id, external_identity_id, name, email)
-            VALUES (%s, %s, 'Duplicate', %s)
+            VALUES (%s, %s, 'No email', NULL)
             """,
-            (uuid4(), f"test-{uuid4()}", f"{user.user_id}@test.local"),
+            (uuid4(), first),
+        )
+        await _execute(
+            """
+            INSERT INTO users (id, external_identity_id, name, email)
+            VALUES (%s, %s, 'Same email', %s)
+            """,
+            (uuid4(), second, f"{user.user_id}@test.local"),
+        )
+    finally:
+        await _execute(
+            "DELETE FROM users WHERE external_identity_id = ANY(%s)",
+            ([first, second],),
         )
 
 

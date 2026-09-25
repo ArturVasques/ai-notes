@@ -54,6 +54,10 @@ jobs:
       LOG_LEVEL: INFO
       POSTGRES_PORT: "1"
       POSTGRES_PASSWORD: unused-in-unit-tests
+      # Placeholders: the unit suite never contacts Entra. Tests build their
+      # own settings or replace the authentication dependency.
+      ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
+      ENTRA_API_CLIENT_ID: 00000000-0000-0000-0000-000000000000
 
     steps:
       - name: Checkout repository
@@ -105,6 +109,11 @@ jobs:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
 
+      # Placeholders: integration tests replace the authentication
+      # dependency and never contact Entra.
+      ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
+      ENTRA_API_CLIENT_ID: 00000000-0000-0000-0000-000000000000
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -128,6 +137,12 @@ jobs:
   docker-smoke:
     runs-on: ubuntu-latest
     needs: [quality, unit-tests, integration-tests]
+
+    env:
+      # Placeholders so the stack starts; the smoke test only calls the
+      # unauthenticated health endpoints.
+      ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000000
+      ENTRA_API_CLIENT_ID: 00000000-0000-0000-0000-000000000000
 
     steps:
       - name: Checkout repository
@@ -159,9 +174,6 @@ jobs:
           echo "healthcheck: $status"
           [ "$status" = "healthy" ]
           docker compose exec -T api id -u | grep -qv '^0$'
-
-      - name: Seed the development user inside the container
-        run: docker compose run --rm --no-deps api python -m app.database.seed
 
       - name: Show logs on failure
         if: failure()

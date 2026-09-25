@@ -2,9 +2,10 @@
 End-to-end HTTP tests for the finance endpoints against the real database.
 
 The application is called in-process through httpx's ASGI transport with
-the session database pool already open (the lifespan is not run). Identity
-comes from the development authentication boundary exactly as in local
-development: the `X-User-Id` header with APP_ENV=development.
+the session database pool already open (the lifespan is not run). The
+authentication dependency is replaced with `app.dependency_overrides`, so
+the tests choose which trusted AppContext a request runs as without any
+identity provider. Only the last test exercises the real boundary.
 """
 
 from collections.abc import AsyncIterator
@@ -14,50 +15,59 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-import app.auth.dependencies as dependencies
 from app.auth.context import AppContext
-from app.core.config import AppEnv, AppSettings
+from app.auth.dependencies import get_app_context
 from main import app
 
 
-@pytest_asyncio.fixture
-async def client(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
-    development = AppSettings(app_env=AppEnv.DEVELOPMENT, postgres_password="unused")
-    monkeypatch.setattr(dependencies, "settings", development)
+class Api:
+    """Thin wrapper choosing the authenticated user of the next requests."""
 
+    def __init__(self, http: AsyncClient) -> None:
+        self.http = http
+
+    def as_user(self, context: AppContext) -> AsyncClient:
+        app.dependency_overrides[get_app_context] = lambda: context
+        return self.http
+
+    def anonymous(self) -> AsyncClient:
+        app.dependency_overrides.pop(get_app_context, None)
+        return self.http
+
+
+@pytest_asyncio.fixture
+async def api() -> AsyncIterator[Api]:
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test"
     ) as http:
-        yield http
+        yield Api(http)
 
-
-def _as(context: AppContext) -> dict[str, str]:
-    return {"X-User-Id": str(context.user_id)}
+    app.dependency_overrides.clear()
 
 
 async def _post(
-    client: AsyncClient, context: AppContext, path: str, body: dict[str, Any]
+    api: Api, context: AppContext, path: str, body: dict[str, Any]
 ) -> dict[str, Any]:
-    response = await client.post(path, json=body, headers=_as(context))
+    response = await api.as_user(context).post(path, json=body)
 
     assert response.status_code == 201, response.text
     result: dict[str, Any] = response.json()
     return result
 
 
-async def test_quick_add_expense_flow(client: AsyncClient, user: AppContext) -> None:
+async def test_quick_add_expense_flow(api: Api, user: AppContext) -> None:
     account = await _post(
-        client, user, "/accounts", {"name": "Meal Card", "type": "BENEFITS"}
+        api, user, "/accounts", {"name": "Meal Card", "type": "BENEFITS"}
     )
     category = await _post(
-        client,
+        api,
         user,
         "/categories",
         {"name": "Restaurants", "kind": "EXPENSE", "icon": "utensils"},
     )
 
     expense = await _post(
-        client,
+        api,
         user,
         "/transactions",
         {
@@ -70,7 +80,7 @@ async def test_quick_add_expense_flow(client: AsyncClient, user: AppContext) -> 
         },
     )
 
-    listed = await client.get("/transactions", headers=_as(user))
+    listed = await api.as_user(user).get("/transactions")
 
     assert expense["amount_minor"] == 2480
     assert expense["kind"] == "EXPENSE"
@@ -81,12 +91,11 @@ async def test_quick_add_expense_flow(client: AsyncClient, user: AppContext) -> 
 
 
 async def test_body_cannot_choose_the_owner(
-    client: AsyncClient, user: AppContext, other_user: AppContext
+    api: Api, user: AppContext, other_user: AppContext
 ) -> None:
-    response = await client.post(
+    response = await api.as_user(user).post(
         "/accounts",
         json={"name": "Sneaky", "type": "CASH", "user_id": str(other_user.user_id)},
-        headers=_as(user),
     )
 
     assert response.status_code == 422
@@ -94,17 +103,17 @@ async def test_body_cannot_choose_the_owner(
 
 @pytest.mark.parametrize("amount", [24.8, 24.0, "2480", 0, -100, True])
 async def test_non_integer_or_non_positive_amounts_are_rejected(
-    client: AsyncClient, user: AppContext, amount: object
+    api: Api, user: AppContext, amount: object
 ) -> None:
-    account = await _post(client, user, "/accounts", {"name": "Cash", "type": "CASH"})
+    account = await _post(api, user, "/accounts", {"name": "Cash", "type": "CASH"})
     category = await _post(
-        client,
+        api,
         user,
         "/categories",
         {"name": "Food", "kind": "EXPENSE", "icon": "utensils"},
     )
 
-    response = await client.post(
+    response = await api.as_user(user).post(
         "/transactions",
         json={
             "kind": "EXPENSE",
@@ -113,24 +122,21 @@ async def test_non_integer_or_non_positive_amounts_are_rejected(
             "from_account_id": account["id"],
             "category_id": category["id"],
         },
-        headers=_as(user),
     )
 
     assert response.status_code == 422
 
 
-async def test_business_rule_violation_returns_400(
-    client: AsyncClient, user: AppContext
-) -> None:
-    account = await _post(client, user, "/accounts", {"name": "Cash", "type": "CASH"})
+async def test_business_rule_violation_returns_400(api: Api, user: AppContext) -> None:
+    account = await _post(api, user, "/accounts", {"name": "Cash", "type": "CASH"})
     salary = await _post(
-        client,
+        api,
         user,
         "/categories",
         {"name": "Salary", "kind": "INCOME", "icon": "briefcase"},
     )
 
-    response = await client.post(
+    response = await api.as_user(user).post(
         "/transactions",
         json={
             "kind": "EXPENSE",
@@ -139,7 +145,6 @@ async def test_business_rule_violation_returns_400(
             "from_account_id": account["id"],
             "category_id": salary["id"],
         },
-        headers=_as(user),
     )
 
     assert response.status_code == 400
@@ -147,15 +152,13 @@ async def test_business_rule_violation_returns_400(
 
 
 async def test_other_users_resources_answer_404(
-    client: AsyncClient, user: AppContext, other_user: AppContext
+    api: Api, user: AppContext, other_user: AppContext
 ) -> None:
-    account = await _post(client, user, "/accounts", {"name": "Mine", "type": "CASH"})
+    account = await _post(api, user, "/accounts", {"name": "Mine", "type": "CASH"})
 
-    read = await client.get(f"/accounts/{account['id']}", headers=_as(other_user))
-    patch = await client.patch(
-        f"/accounts/{account['id']}",
-        json={"archived": True},
-        headers=_as(other_user),
+    read = await api.as_user(other_user).get(f"/accounts/{account['id']}")
+    patch = await api.as_user(other_user).patch(
+        f"/accounts/{account['id']}", json={"archived": True}
     )
 
     assert read.status_code == 404
@@ -163,31 +166,27 @@ async def test_other_users_resources_answer_404(
     assert patch.status_code == 404
 
 
-async def test_duplicate_name_answers_409(
-    client: AsyncClient, user: AppContext
-) -> None:
-    await _post(client, user, "/accounts", {"name": "Savings", "type": "SAVINGS"})
+async def test_duplicate_name_answers_409(api: Api, user: AppContext) -> None:
+    await _post(api, user, "/accounts", {"name": "Savings", "type": "SAVINGS"})
 
-    response = await client.post(
-        "/accounts", json={"name": "savings", "type": "SAVINGS"}, headers=_as(user)
+    response = await api.as_user(user).post(
+        "/accounts", json={"name": "savings", "type": "SAVINGS"}
     )
 
     assert response.status_code == 409
     assert response.json()["code"] == "CONFLICT"
 
 
-async def test_transaction_lifecycle_over_http(
-    client: AsyncClient, user: AppContext
-) -> None:
-    account = await _post(client, user, "/accounts", {"name": "Cash", "type": "CASH"})
+async def test_transaction_lifecycle_over_http(api: Api, user: AppContext) -> None:
+    account = await _post(api, user, "/accounts", {"name": "Cash", "type": "CASH"})
     category = await _post(
-        client,
+        api,
         user,
         "/categories",
         {"name": "Food", "kind": "EXPENSE", "icon": "utensils"},
     )
     expense = await _post(
-        client,
+        api,
         user,
         "/transactions",
         {
@@ -199,7 +198,7 @@ async def test_transaction_lifecycle_over_http(
         },
     )
     reimbursement = await _post(
-        client,
+        api,
         user,
         "/transactions",
         {
@@ -211,21 +210,16 @@ async def test_transaction_lifecycle_over_http(
         },
     )
 
-    blocked = await client.delete(f"/transactions/{expense['id']}", headers=_as(user))
-    change_kind = await client.patch(
-        f"/transactions/{expense['id']}", json={"kind": "INCOME"}, headers=_as(user)
+    http = api.as_user(user)
+    blocked = await http.delete(f"/transactions/{expense['id']}")
+    change_kind = await http.patch(
+        f"/transactions/{expense['id']}", json={"kind": "INCOME"}
     )
-    edited = await client.patch(
-        f"/transactions/{expense['id']}",
-        json={"description": "Team dinner"},
-        headers=_as(user),
+    edited = await http.patch(
+        f"/transactions/{expense['id']}", json={"description": "Team dinner"}
     )
-    removed = await client.delete(
-        f"/transactions/{reimbursement['id']}", headers=_as(user)
-    )
-    removed_expense = await client.delete(
-        f"/transactions/{expense['id']}", headers=_as(user)
-    )
+    removed = await http.delete(f"/transactions/{reimbursement['id']}")
+    removed_expense = await http.delete(f"/transactions/{expense['id']}")
 
     assert blocked.status_code == 409
     assert change_kind.status_code == 422
@@ -236,25 +230,30 @@ async def test_transaction_lifecycle_over_http(
     assert removed_expense.status_code == 204
 
 
-async def test_history_query_parameters(client: AsyncClient, user: AppContext) -> None:
-    reversed_period = await client.get(
-        "/transactions",
-        params={"from": "2026-09-30", "to": "2026-09-01"},
-        headers=_as(user),
+async def test_history_query_parameters(api: Api, user: AppContext) -> None:
+    http = api.as_user(user)
+
+    reversed_period = await http.get(
+        "/transactions", params={"from": "2026-09-30", "to": "2026-09-01"}
     )
-    too_large = await client.get(
-        "/transactions", params={"limit": 201}, headers=_as(user)
-    )
-    bad_cursor = await client.get(
-        "/transactions", params={"cursor": "garbage"}, headers=_as(user)
-    )
+    too_large = await http.get("/transactions", params={"limit": 201})
+    bad_cursor = await http.get("/transactions", params={"cursor": "garbage"})
 
     assert reversed_period.status_code == 400
     assert too_large.status_code == 422
     assert bad_cursor.status_code == 400
 
 
-async def test_requests_without_identity_are_rejected(client: AsyncClient) -> None:
-    response = await client.get("/accounts")
+async def test_profile_endpoint_returns_the_caller(api: Api, user: AppContext) -> None:
+    response = await api.as_user(user).get("/me")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == str(user.user_id)
+    assert response.json()["name"] == "Test User"
+
+
+async def test_requests_without_a_bearer_token_are_rejected(api: Api) -> None:
+    response = await api.anonymous().get("/accounts")
 
     assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"

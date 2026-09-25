@@ -59,7 +59,7 @@ Principle:
 
 # Phase 1 — Personal Finance v1
 
-Status: In progress (design approved, implementation starting)
+Status: Done (local application complete; see `DOMAIN_MODEL.md` section 10)
 
 Already in place from the previous iteration:
 
@@ -96,9 +96,8 @@ Learning focus:
 
 # Phase 2 — Authentication & Authorization
 
-Next milestone. Replace the development `X-User-Id` mechanism with real
-Microsoft Entra authentication. Until then the Angular app sends the Bearer
-token and the backend does not accept it yet; this is expected.
+Status: Done (implemented together with v1). The development `X-User-Id`
+mechanism no longer exists; the API only accepts Entra access tokens.
 
 Flow:
 
@@ -111,19 +110,24 @@ Angular
   → internal User
   → AppContext
 
-Implement:
+Implemented:
 
 - Bearer token authentication
-- Entra JWKS signature validation
-- issuer, audience and expiration validation
+- Entra JWKS signature validation (RS256)
+- issuer, audience, expiration/not-before, tenant and version validation
 - delegated scope validation
-- map Entra `oid` to internal User
-- user provisioning strategy (including default categories)
-- retain explicit development/test authentication only where justified
+- map Entra `oid` to internal User (`users.external_identity_id`)
+- just-in-time user provisioning including default categories
+- no development/test identity headers; tests use dependency overrides
 - backend authorization through AppContext
-- route protection for UX
+- Angular HTTP interceptor and route guards
+
+Still open:
+
 - revisit MSAL cache location (`SessionStorage` vs `LocalStorage`) once the
   PWA runs over HTTPS on a real iPhone
+- optional development-time observability of the token flow (structured,
+  sanitized, never logging tokens)
 
 Learning focus:
 

@@ -1,6 +1,8 @@
 # Personal Finance — Domain Model
 
-Status: approved design. F0 (baseline cleanup) and F1 (backend domain) done; reports start at F2.
+Status: implemented (Personal Finance v1: backend domain, reports,
+authentication and mobile-first frontend). Section 10 lists what the
+implementation decided beyond this design.
 
 This document is the reference for the financial domain: what each concept
 means, how it is stored, and how every metric is calculated. Financial rules
@@ -18,7 +20,7 @@ layer only call those services.
 | D3 | A reimbursement is linked to its original expense for **effective spending**, and always keeps its own real date for **cash flow**. They are different metrics. |
 | D4 | New clean baseline migration for the finance domain. Plain PostgreSQL; pgvector removed until a real RAG use case (documents/invoices) exists. |
 | D5 | Current AI/RAG code is deleted (preserved in Git history). No `OPENAI_API_KEY` and no AI dependencies in this phase. |
-| D6 | The frontend sends only the MSAL Bearer token. No `X-User-Id` bridge in Angular. Frontend/backend integration stays incomplete until Entra JWT validation is implemented in FastAPI (next milestone). |
+| D6 | The frontend sends only the MSAL Bearer token, attached by one HTTP interceptor. The API validates Entra v2 access tokens (RS256 via JWKS, `iss`, `aud`, `exp`/`nbf`, `tid`, `ver`, `scp`) and provisions the internal user from `oid` on first login. No development identity header exists. |
 | D7 | MSAL cache stays in `SessionStorage`. Re-evaluate once the PWA runs over HTTPS on a real iPhone. |
 | D8 | Out of v1: shared receivables, credit cards, investment sales, investment quantities. The model must not block them later. |
 | S1 | "How much did I save" is **Net Savings = Income − Effective Expenses**, not the change in savings accounts. Where that money went is a separate breakdown (**Savings Allocation**). |
@@ -267,7 +269,7 @@ app/
 │                   transactions.py, reports.py, health.py, errors.py
 ├── auth/           context.py, dependencies.py, permissions.py (finance:read, finance:write)
 ├── core/           config.py, logging.py, middleware.py, event_loop.py
-├── database/       connection.py, seed.py
+├── database/       connection.py, sql.py
 ├── repositories/   one per table + user_repository.py
 ├── schemas/        Pydantic contracts per resource
 └── services/finance/
@@ -279,17 +281,21 @@ app/
 
 | Endpoint | Purpose |
 |---|---|
+| `GET /me` | The caller's profile, provisioned from the token |
 | `GET/POST /accounts`, `PATCH /accounts/{id}` | Manage accounts; archive through `PATCH` |
-| `GET /accounts/balances` | Current balance per account (F2) |
+| `GET /accounts/balances?as_of&include_archived` | Balance per account: opening balance + movements up to `as_of` |
 | `GET/POST /categories?kind=`, `PATCH /categories/{id}` | Manage categories and icons |
 | `GET/POST /investment-assets`, `PATCH /investment-assets/{id}` | Manage investment assets |
 | `GET /transactions?from&to&kind&category_id&account_id&investment_asset_id&limit&cursor` | History with filters, keyset pagination |
 | `POST /transactions` | Create; body is a discriminated union on `kind` |
 | `GET/PATCH/DELETE /transactions/{id}` | Read, edit, delete |
-| `GET /reports/overview?from&to` | Income, expenses, net savings, rate, allocation, cash flow, transfers |
-| `GET /reports/spending-by-category` | Effective expenses per category |
-| `GET /reports/savings`, `GET /reports/investments` | Allocation detail; invested by asset/account |
-| `GET /reports/monthly-trend` | Month-by-month income, expenses and net savings |
+| `GET /reports/overview?from&to` | Income, gross/effective expenses, net savings, rate, allocation, cash flow, transfers |
+| `GET /reports/categories?kind&from&to` | Effective amount per category of one kind (expenses by default) |
+| `GET /reports/savings?from&to` | Net savings, rate, allocation and per-savings-account movements |
+| `GET /reports/investments?from&to` | Invested by asset and by source account (all time without a period) |
+| `GET /reports/monthly-trend?months&until` | Month-by-month flow metrics (1–36 months) |
+
+Periods are inclusive and default to the current calendar month.
 
 `POST /transactions` accepts `ExpenseCreate | IncomeCreate | TransferCreate |
 InvestmentCreate | ReimbursementCreate`, discriminated by `kind`. The same
@@ -309,6 +315,8 @@ Each future tool maps to one public service function taking `AppContext`:
 | `get_savings_summary` | `reports_service.get_savings_summary` |
 | `get_investment_summary` | `reports_service.get_investment_summary` |
 | `get_financial_overview` | `reports_service.get_financial_overview` |
+| `get_monthly_trend` | `reports_service.get_monthly_trend` |
+| `get_account_balances` | `accounts_service.get_account_balances` |
 
 The HTTP API calls them now; agent tools and MCP will call the same functions
 later, so financial rules are never duplicated.
@@ -349,60 +357,113 @@ Decisions taken while implementing F1, beyond or refining the design above:
 - **Default categories** are created by
   `categories_service.provision_default_categories`, called today by the
   development seed. There is no endpoint for it.
-- **Known limitation until user provisioning**: a development `X-User-Id`
-  that has no row in `users` fails on the first write (foreign key) with a
-  masked 500. Run the seed first; the JWT milestone will provision users.
+
+### Implementation notes (F2, authentication, frontend)
+
+- **Reports** are pure aggregations in `reports_repository.py`; the
+  service composes them. Savings-account movement counts every inflow and
+  outflow of `SAVINGS` accounts by real date, so a transfer between two
+  savings accounts nets to zero. `retained_cash` is the residual and may be
+  negative.
+- **Balances** are a stock metric (`opening_balance_minor` + inflows −
+  outflows up to `as_of`) and are exposed on `/accounts/balances`, not
+  under `/reports`.
+- **Authentication**: the token validator requires `aud`, `iss`, `exp`,
+  `iat`, `nbf`, `oid`, `tid`, `ver` and `scp`, allows 30 s of clock leeway
+  and caches JWKS for one hour. JWKS lookups run in the thread pool. A
+  malformed token never triggers a network call. Missing/invalid tokens
+  answer 401 with `WWW-Authenticate: Bearer` and a generic message; the
+  reason is logged without the token.
+- **User provisioning**: `users.external_identity_id` holds the Entra
+  `oid`; `name` comes from the `name` claim, then `preferred_username`,
+  then "User"; `email` is stored when the token carries it and is neither
+  unique nor an identity key. The profile is refreshed when the claims
+  change. Default categories are created inside the same transaction as
+  the user. Concurrent first logins race safely (`ON CONFLICT DO NOTHING`).
+- **Tests** never contact Entra: the unit suite signs tokens with a
+  throwaway RSA key and replaces the JWKS lookup; the integration suite
+  replaces `get_app_context` with `app.dependency_overrides`.
+- **Frontend** (Angular 22): reads go through `httpResource` and refetch
+  after any mutation via a shared `RefreshService` version signal; a single
+  `PeriodStore` drives the month shown by Home, Transactions and Insights.
+  "Save" is an entry type of the Quick Add sheet that creates a `TRANSFER`
+  into a `SAVINGS` account. Amounts are typed as text (`24,80` or `24.80`)
+  and parsed to cents without floating point; they display as `€24.80`
+  (`-€24.80`, `+€3,050.00`). Icons come from the `lucide` package through an
+  allowlist (`shared/icons.ts`); the API stores only the key. The bottom
+  sheet is a native `<dialog>` with a glass surface. Design tokens (type
+  scale, spacing, radii, surfaces, glass, motion) live in `styles.scss`;
+  route changes use the router's view transitions and motion respects
+  `prefers-reduced-motion`. No service worker in v1.
 
 ---
 
 ## 6. Frontend
 
-Mobile-first Angular PWA, designed for iPhone Safari → Add to Home Screen.
+Mobile-first Angular PWA, designed for iPhone Safari → Add to Home Screen,
+with a desktop composition of its own (side rail, centred content).
 
-Navigation: a bottom bar with Home · Transactions · **+** · Insights ·
-Settings, respecting the iPhone safe area.
+Navigation: the four top-level tabs — Home · Activity · **+** · Insights ·
+Settings — live in a swipeable pager (`core/layout/tab-pager.component.ts`):
+all four pages stay mounted side by side, each with its own scroll, and a
+horizontal drag moves them under the finger with a slight depth effect,
+settling with a spring. The floating glass navigation (bottom pill on
+phones, side rail on desktop) and the URL stay in sync; tab routes carry no
+component, nested pages (Settings sub-pages) render on top of the pager.
 
 | Page | Content |
 |---|---|
-| Home | Month switcher; cards for Income, Expenses, Net savings (with rate), Invested; allocation bar (savings accounts / investments / retained); effective spending by category as CSS bars; last 5 transactions |
-| Transactions | Day-grouped list (Today / Yesterday / date); filter sheet for period, type, category and account; tap to edit |
-| **+** Quick Add | Global bottom sheet. Type selector (default Expense; Income, Transfer, Save, Invest, Reimbursement). Amount first with `inputmode="decimal"`; category icon grid (recent first); account chips (last used preselected); optional description; date defaults to today. Save button within thumb reach. Fields adapt to the type. |
-| Insights | Monthly trend, net savings and rate over time, allocation history, invested by asset, cash flow vs net savings |
-| Settings | Accounts, categories (name, icon, archive), investment assets, sign out |
+| Home | `Overview / <month>` with month arrows; Income as the hero number; Spent · Saved (with savings rate) · Invested; net cash flow line; top spending categories with thin bars; recent activity |
+| Activity | Day-grouped rows (Today / Yesterday / date); filter sheet (type chips, category, account); load more; tap to edit |
+| **+** Quick Add | Glass sheet in two steps: pick the entry type (Expense, Income, Transfer, Save, Invest, Refund) from a compact list, then a form where the amount dominates and every other value is a row (From, To, Category, Asset, Expense, Date, Note) that expands its options in place. Editing reuses the same form with Delete. |
+| Insights | Income / Spent / Saved metrics; where the savings went (allocation bar, retained cash explained, savings accounts); last six months; spending and income by category; investments by asset (all time + this month) |
+| Settings | Profile (`/me`), Appearance (System / Day / Night), Accounts (total balance hero, balances per account), Categories (expense/income, icon picker), Investment assets, archive/restore, sign out |
 
-Structure (folders only when they contain code):
+Structure:
 
 ```
 src/app/
-├── core/       auth/ (unchanged MSAL), api/ (environment base URL, Bearer interceptor), layout/ (shell, bottom nav)
-├── shared/     money formatting/parsing, category icon component
-└── features/   dashboard/, transactions/ (incl. quick add), accounts/, categories/,
-                investments/, insights/, settings/
+├── core/       auth/ (MSAL config, service, Bearer interceptor, guards, login page)
+│               api/ (models, error messages), layout/ (shell, tab pager, swipe helpers)
+│               period.store.ts, refresh.service.ts, theme.service.ts, toast.service.ts
+├── shared/     money (parse/format), dates, icons allowlist + icon component,
+│               sheet (native <dialog> + glass), month switcher, money pipe
+└── features/   dashboard/, transactions/ (page, quick add, item, form logic, grouping),
+                insights/ (page, reports service), accounts/, categories/,
+                investments/, settings/
 ```
 
-- **Money input**: `"24,80"` → `2480` by string parsing, never
-  `parseFloat × 100`. Display with `Intl.NumberFormat('pt-PT', { style:
-  'currency', currency })`.
-- **Icons**: Lucide (open source, tree-shakeable per icon, consistent stroke
-  style). Only a curated allowlist of about 40 icons is bundled. The database
-  stores only the key (`utensils`, `car`, `house`, `shopping-cart`, `plane`,
-  …); the frontend resolves it through the allowlist with a fallback icon.
-  The backend validates the key format; it never stores SVG or HTML.
-  Material Symbols was rejected: it is an icon font (large download, no
-  tree-shaking).
-- **UI**: no component library. Custom SCSS design tokens, native `<dialog>`
-  as bottom sheet (focus trap and Escape handling built in), Signal Forms,
-  lazy-loaded feature routes, charts as plain CSS bars.
+- **Data**: reads go through `httpResource`; a shared `RefreshService`
+  version signal makes every resource refetch after a mutation; a single
+  `PeriodStore` drives the month shown by Home, Activity and Insights.
+- **Money input**: `"24,80"` or `"24.80"` → `2480` by string parsing, never
+  `parseFloat × 100`. Display: `€24.80`, `-€24.80`, `+€3,050.00`; large
+  figures show the cents smaller.
+- **Design system** (`styles.scss`): type scale, spacing, radii, light and
+  night tokens (night = pure black, white/grey text, high contrast), semantic
+  colours with meaning only (positive, negative, investment, tint), glass
+  tokens (translucency, blur, sheen, highlight), motion tokens (`--t-fast`,
+  `--t-base`, `--t-slow`, `--ease`, `--ease-spring`). No UI framework.
+- **Glass** is a finish for what floats over content: navigation, sheets,
+  toasts, small floating controls (month arrows, filters), the blur strip
+  under the notch. Content stays opaque and readable.
+- **Motion**: page crossfade via the router's view transitions for nested
+  pages; the pager animates tab changes; sheets animate in and out; month
+  changes re-mount content with a fade; skeletons while loading; toasts on
+  success; pressed states; everything on `transform`/`opacity` and disabled
+  under `prefers-reduced-motion`.
+- **Theme**: System / Day / Night, stored per browser, applied before the
+  first paint through `<html data-theme>`, `color-scheme` and `theme-color`.
+- **Icons**: Lucide (open source, tree-shakeable per icon) through an
+  allowlist in `shared/icons.ts`; the API stores only the key and falls back
+  to a generic icon for unknown keys. The backend validates the key format;
+  it never stores SVG or HTML.
 - **PWA**: `manifest.webmanifest` (name, `display: standalone`, theme and
-  background colours, 192/512/maskable placeholder icons),
-  `apple-touch-icon`, `apple-mobile-web-app-*` meta tags,
-  `viewport-fit=cover`. No service worker in v1: it adds stale-cache risk
-  around the MSAL redirect and is not required for Add to Home Screen.
-- **Auth**: MSAL unchanged (redirect, `SessionStorage`). The interceptor
-  attaches only the Bearer access token. Until FastAPI validates it, API
-  calls from the browser are expected to fail with 401.
-
----
+  background colours, placeholder icons), `apple-touch-icon`,
+  `apple-mobile-web-app-*` meta tags, `viewport-fit=cover`, safe areas. No
+  service worker in v1.
+- **Auth**: MSAL (redirect, `SessionStorage`); the interceptor attaches the
+  Bearer token to API requests only; silent renewal falls back to a redirect.
 
 ## 7. What is removed and what is kept
 
@@ -448,9 +509,13 @@ frontend Vitest green.
 - Technical identifiers were renamed in F0 (`personal-finance` package and
   Compose project, "Personal Finance API", database `personal_finance`). The
   repository and local folder are still `ai-notes`.
-- The baseline migration `0001` contains the complete finance schema (F1
-  extended it instead of adding a second migration, as there is no
-  production database). Future schema changes use new migrations.
+- The baseline migration `0001` contains the complete finance schema
+  (`users.email` is nullable and not unique). Future schema changes use new
+  migrations.
+- MSAL keeps its cache in `SessionStorage` (D7); revisit for the installed
+  PWA once an HTTPS origin exists.
+- Multi-tenant would require `(tid, oid)` as the external identity; the
+  application is single-tenant and only stores `oid`.
 - Testing on an iPhone needs an HTTPS origin registered as an Entra redirect
   URI (dev tunnel or Azure deployment); the MSAL redirect in iOS standalone
   mode must be verified on a real device.

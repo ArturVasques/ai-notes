@@ -1,64 +1,74 @@
 """
 FastAPI authentication boundary.
 
-This module converts authenticated HTTP identity into trusted AppContext.
+Converts the `Authorization: Bearer <token>` header into a trusted
+AppContext:
 
-Development currently uses explicit headers so the complete architecture can
-run locally without requiring an external identity provider.
+    Bearer JWT → validation (jwt_validator) → Entra `oid`
+    → internal User (provisioned on first login) → AppContext
 
-Production:
-Replace the development implementation with Entra ID JWT validation while
-keeping AppContext and all downstream services unchanged.
+Identity never comes from any other header or from the request body.
+Failures answer 401 with a generic message: the exact reason is logged
+server-side, without the token, so nothing about the token contract leaks
+to a caller probing the API.
 
-Security:
-Development header authentication must never be enabled in production.
+Used by:
+- every finance and profile endpoint through `Depends(get_app_context)`.
+- tests, which replace this dependency with `app.dependency_overrides` to
+  run without an identity provider.
 """
 
-from uuid import UUID
-
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.auth.context import AppContext
-from app.auth.permissions import FINANCE_READ, FINANCE_WRITE, PROFILE_READ
-from app.core.config import AppEnv, get_settings
+from app.auth.jwt_validator import (
+    AuthenticationError,
+    IdentityProviderUnavailableError,
+    validate_access_token,
+)
+from app.auth.permissions import AUTHENTICATED_USER_PERMISSIONS
+from app.core.logging import get_logger
+from app.services.users_service import get_or_provision_user
 
-settings = get_settings()
+logger = get_logger()
+
+# auto_error=False so a missing header is answered by this module (401 with
+# WWW-Authenticate) instead of FastAPI's default 403.
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 async def get_app_context(
-    x_user_id: UUID | None = Header(default=None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> AppContext:
-    """
-    Build trusted application context for a local development request.
+    """Authenticate the request and return the caller's trusted context."""
 
-    Production implementations must derive identity from a validated token,
-    never from caller-controlled identity headers.
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise _unauthorized()
 
-    Development header authentication is possible only when APP_ENV is
-    exactly `development`. There is no default APP_ENV: an unset or
-    misconfigured value fails settings loading at startup instead of
-    silently falling back to a permissive mode.
-    """
-
-    if settings.app_env != AppEnv.DEVELOPMENT:
+    try:
+        identity = await validate_access_token(credentials.credentials)
+    except AuthenticationError as exc:
+        logger.warning("access_token_rejected", reason=str(exc))
+        raise _unauthorized() from exc
+    except IdentityProviderUnavailableError as exc:
+        logger.error("identity_provider_unavailable", error=str(exc))
         raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Production identity provider is not configured",
-        )
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Identity provider unavailable",
+        ) from exc
 
-    if x_user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Development identity header is required",
-        )
+    user = await get_or_provision_user(identity)
 
     return AppContext(
-        user_id=x_user_id,
-        permissions=frozenset(
-            {
-                FINANCE_READ,
-                FINANCE_WRITE,
-                PROFILE_READ,
-            }
-        ),
+        user_id=user.id,
+        permissions=AUTHENTICATED_USER_PERMISSIONS,
     )

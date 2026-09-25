@@ -1,21 +1,21 @@
 import { EnvironmentProviders, inject, provideAppInitializer, Provider } from '@angular/core';
 import { MSAL_INSTANCE, MsalService } from '@azure/msal-angular';
 import { BrowserCacheLocation, Configuration, PublicClientApplication } from '@azure/msal-browser';
+import { environment } from '../../../environments/environment';
 
 const msalConfig: Configuration = {
   auth: {
-    clientId: 'a7f65d58-d33c-4d54-a58d-145f61cd0ee3',
-    authority: 'https://login.microsoftonline.com/ff746bf4-ac21-4888-9492-329f890f03cf',
-    redirectUri: 'http://localhost:4200',
+    clientId: environment.msal.clientId,
+    authority: environment.msal.authority,
+    redirectUri: environment.msal.redirectUri,
+    postLogoutRedirectUri: environment.msal.postLogoutRedirectUri,
   },
   cache: {
+    // Session storage: the account is forgotten when the browser session
+    // ends. Re-evaluate for the installed PWA once it runs over HTTPS.
     cacheLocation: BrowserCacheLocation.SessionStorage,
   },
 };
-
-export const apiScopes = [
-  'api://79c3be33-0729-4d58-b2ec-43db3a534c60/access_as_user',
-];
 
 export function provideMsal(): (Provider | EnvironmentProviders)[] {
   return [

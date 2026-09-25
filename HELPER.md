@@ -4,8 +4,8 @@ Commands are shown for PowerShell on Windows; on macOS/Linux replace
 `.\.venv\Scripts\Activate.ps1` with `source .venv/bin/activate` and
 `Copy-Item` with `cp`.
 
-Backend commands run from `backend/`; Docker Compose commands run from the
-repository root.
+Backend commands run from `backend/`, frontend commands from `frontend/`,
+Docker Compose commands from the repository root.
 
 
 ## Local Development
@@ -18,20 +18,27 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e ".[dev]"
 
-# Configuration: APP_ENV (required) and the PostgreSQL password
+# Configuration: APP_ENV (required), the PostgreSQL password and the Entra
+# identifiers (tenant id, API client id). See the comments in the template.
 Copy-Item .env.example .env
 
 # Database schema (PostgreSQL configured in .env; create the
 # personal_finance database first)
 alembic upgrade head
 
-# Development user + default categories (refuses to run unless APP_ENV=development)
-python -m app.database.seed
-
 # API. The loop factory is mandatory on Windows (psycopg async mode cannot
 # use ProactorEventLoop) and harmless elsewhere.
 uvicorn main:app --loop app.core.event_loop:loop_factory
 ```
+
+```powershell
+cd frontend
+npm install
+npm start          # http://localhost:4200, expects the API on :8000
+```
+
+Sign in with Microsoft; the user and its default categories are created on
+the first authenticated request. There is no seed script.
 
 
 ## Tests and Code Quality
@@ -39,7 +46,7 @@ uvicorn main:app --loop app.core.event_loop:loop_factory
 ```powershell
 # From backend/
 
-# Unit tests: no database, no network
+# Unit tests: no database, no network (tokens are signed with a local key)
 pytest tests/unit -v
 
 # Integration tests: real PostgreSQL from .env, migrations applied
@@ -55,26 +62,24 @@ mypy
 # From frontend/
 npm test -- --watch=false
 npm run build
+npx prettier --check "src/**/*.{ts,html,scss}"
 ```
 
 
 ## Docker Compose (local development stack)
 
 ```powershell
-# From the repository root.
+# From the repository root. Needs ENTRA_TENANT_ID and ENTRA_API_CLIENT_ID in
+# the shell or in a root .env (public identifiers, see backend/.env.example).
 # Build, run migrations, start the API
 docker compose up --build -d
 
-# Development user and its default categories (idempotent)
-docker compose run --rm --no-deps api python -m app.database.seed
-
-# Create an account as the development user
-$headers = @{ "X-User-Id" = "22222222-2222-2222-2222-222222222222" }
-$account = @{ name = "Current Account"; type = "CHECKING" } | ConvertTo-Json
-Invoke-RestMethod -Method Post http://localhost:8000/accounts -Headers $headers -ContentType "application/json" -Body $account
-
 # Readiness (API + database)
 curl.exe http://localhost:8000/health/ready
+
+# An authenticated call needs a real Entra access token; without one the API
+# answers 401 with WWW-Authenticate: Bearer
+curl.exe -i http://localhost:8000/me
 
 # Logs, stop/start (keeps data), destroy (including the database volume)
 docker compose logs -f api

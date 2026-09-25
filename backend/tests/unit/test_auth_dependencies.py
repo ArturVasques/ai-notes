@@ -1,67 +1,117 @@
 """
-Regression tests for the development authentication boundary.
+Unit tests for the authentication boundary (Bearer → AppContext).
 
-Bug covered: header identity (X-User-Id) must be possible only
-when APP_ENV is exactly `development`. Any other environment fails closed
-with 501 until a real identity provider is wired in.
+The token validator and the user provisioning are replaced, so nothing here
+needs Entra or a database. HTTP-level cases use the real application: a
+missing or malformed Bearer header must answer 401 without ever reaching
+the network.
 """
 
 from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.testclient import TestClient
 
 import app.auth.dependencies as dependencies
 from app.auth.context import AppContext
-from app.auth.permissions import FINANCE_READ, FINANCE_WRITE, PROFILE_READ
-from app.core.config import AppEnv, AppSettings
+from app.auth.jwt_validator import (
+    AuthenticationError,
+    IdentityProviderUnavailableError,
+    TokenIdentity,
+)
+from app.auth.permissions import (
+    AUTHENTICATED_USER_PERMISSIONS,
+    FINANCE_READ,
+    FINANCE_WRITE,
+)
 from app.core.errors import PermissionDeniedError
+from app.schemas.user import UserProfile
+from main import app
+
+IDENTITY = TokenIdentity(
+    external_identity_id="oid-1",
+    tenant_id="tenant-1",
+    name="Artur",
+    preferred_username="artur@example.com",
+    email=None,
+    scopes=frozenset({"access_as_user"}),
+)
 
 
-def _settings_for(app_env: AppEnv, monkeypatch: pytest.MonkeyPatch) -> AppSettings:
-    monkeypatch.setenv("APP_ENV", app_env.value)
-    monkeypatch.setenv("POSTGRES_PASSWORD", "unit-test-password")
-
-    return AppSettings(_env_file=None)
+def _bearer(token: str) -> HTTPAuthorizationCredentials:
+    return HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
 
-@pytest.mark.parametrize("app_env", [AppEnv.PRODUCTION, AppEnv.TEST])
-async def test_header_identity_is_rejected_outside_development(
-    monkeypatch: pytest.MonkeyPatch, app_env: AppEnv
-) -> None:
-    monkeypatch.setattr(dependencies, "settings", _settings_for(app_env, monkeypatch))
+async def test_missing_credentials_are_rejected_with_bearer_challenge() -> None:
+    with pytest.raises(HTTPException) as error:
+        await dependencies.get_app_context(credentials=None)
+
+    assert error.value.status_code == 401
+    assert error.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+async def test_non_bearer_scheme_is_rejected() -> None:
+    basic = HTTPAuthorizationCredentials(scheme="Basic", credentials="dXNlcjpwdw==")
 
     with pytest.raises(HTTPException) as error:
-        await dependencies.get_app_context(x_user_id=uuid4())
-
-    assert error.value.status_code == 501
-
-
-async def test_development_requires_the_identity_header(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        dependencies, "settings", _settings_for(AppEnv.DEVELOPMENT, monkeypatch)
-    )
-
-    with pytest.raises(HTTPException) as error:
-        await dependencies.get_app_context(x_user_id=None)
+        await dependencies.get_app_context(credentials=basic)
 
     assert error.value.status_code == 401
 
 
-async def test_development_builds_trusted_context_from_headers(
+async def test_invalid_token_is_rejected_without_details(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        dependencies, "settings", _settings_for(AppEnv.DEVELOPMENT, monkeypatch)
-    )
-    user_id = uuid4()
+    async def reject(token: str) -> TokenIdentity:
+        raise AuthenticationError("InvalidAudienceError")
 
-    context = await dependencies.get_app_context(x_user_id=user_id)
+    monkeypatch.setattr(dependencies, "validate_access_token", reject)
 
-    assert context.user_id == user_id
-    assert context.permissions == {FINANCE_READ, FINANCE_WRITE, PROFILE_READ}
+    with pytest.raises(HTTPException) as error:
+        await dependencies.get_app_context(credentials=_bearer("token"))
+
+    assert error.value.status_code == 401
+    assert error.value.detail == "Authentication required"
+
+
+async def test_unavailable_identity_provider_answers_503(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def unavailable(token: str) -> TokenIdentity:
+        raise IdentityProviderUnavailableError("JWKS unavailable")
+
+    monkeypatch.setattr(dependencies, "validate_access_token", unavailable)
+
+    with pytest.raises(HTTPException) as error:
+        await dependencies.get_app_context(credentials=_bearer("token"))
+
+    assert error.value.status_code == 503
+
+
+async def test_valid_token_builds_context_from_the_internal_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    internal_id = uuid4()
+    seen: list[TokenIdentity] = []
+
+    async def accept(token: str) -> TokenIdentity:
+        assert token == "valid-token"
+        return IDENTITY
+
+    async def provision(identity: TokenIdentity) -> UserProfile:
+        seen.append(identity)
+        return UserProfile(id=internal_id, name="Artur", email=None)
+
+    monkeypatch.setattr(dependencies, "validate_access_token", accept)
+    monkeypatch.setattr(dependencies, "get_or_provision_user", provision)
+
+    context = await dependencies.get_app_context(credentials=_bearer("valid-token"))
+
+    assert context.user_id == internal_id
+    assert context.permissions == AUTHENTICATED_USER_PERMISSIONS
+    assert seen == [IDENTITY]
 
 
 def test_require_permission_raises_when_missing() -> None:
@@ -71,3 +121,30 @@ def test_require_permission_raises_when_missing() -> None:
 
     with pytest.raises(PermissionDeniedError):
         context.require_permission(FINANCE_WRITE)
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.mark.parametrize("path", ["/me", "/accounts", "/transactions"])
+def test_endpoints_without_authorization_answer_401(
+    client: TestClient, path: str
+) -> None:
+    response = client.get(path)
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+@pytest.mark.parametrize(
+    "authorization",
+    ["Bearer not-a-jwt", "Basic dXNlcjpwdw==", "Bearer", "Token abc"],
+)
+def test_malformed_authorization_headers_answer_401(
+    client: TestClient, authorization: str
+) -> None:
+    response = client.get("/me", headers={"Authorization": authorization})
+
+    assert response.status_code == 401

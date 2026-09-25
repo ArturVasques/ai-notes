@@ -1,21 +1,9 @@
-import { Component, inject } from '@angular/core';
-import { AuthService } from './core/auth/auth.service';
+import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
-  styleUrl: './app.scss',
-  templateUrl: './app.html',
+  imports: [RouterOutlet],
+  template: '<router-outlet />',
 })
-export class App {
-  private readonly auth = inject(AuthService);
-
-  readonly isAuthenticated = this.auth.isAuthenticated;
-
-  login(): void {
-    this.auth.login();
-  }
-
-  logout(): void {
-    this.auth.logout();
-  }
-}
+export class App {}
